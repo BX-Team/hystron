@@ -3,6 +3,9 @@ import asyncio
 import uvicorn
 
 from app.database import create_user, init_db, user_exists
+
+init_db()
+
 from app.main import internal_app, public_app
 
 
@@ -25,8 +28,6 @@ async def _run() -> None:
 
 
 if __name__ == "__main__":
-    init_db()
-
     if not user_exists("admin"):
         result = create_user("admin")
         if result:
