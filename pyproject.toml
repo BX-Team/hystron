@@ -32,6 +32,7 @@ dependencies = [
   "uvicorn==0.41.0",
   "textual[syntax]>=2.1.2",
   "typer>=0.24.1",
+  "qrcode>=8.0",
 ]
 
 [tool.ruff]

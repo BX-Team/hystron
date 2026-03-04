@@ -75,12 +75,10 @@ def version():
 def tui():
     """Open the interactive terminal admin UI."""
     try:
-        from app.database import init_db
         from tui.admin import AdminApp
     except ImportError as exc:
         console.print(f"[red]TUI unavailable:[/red] {exc}")
         raise typer.Exit(1)
-    init_db()
     AdminApp().run()
 
 
@@ -186,7 +184,6 @@ def users_create(
 ):
     """Create a new user."""
     _require_db()
-    init_db()
     result = create_user(username, traffic_limit=traffic_limit, expires_at=expires_at)
     if result is None:
         console.print(f"[red]User '{username}' already exists.[/red]")

@@ -62,6 +62,7 @@ def init_db():
         "forbidden_domains": "",
         "subscription_path": "/sub",
         "support_url": "https://discord.gg/qNyybSSPm5",
+        "base_url": "",
     }
     for k, v in defaults.items():
         cur.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v))

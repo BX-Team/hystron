@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from collections.abc import Callable
 from datetime import datetime
 
+import qrcode
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
@@ -32,10 +33,10 @@ from app.database import (
     delete_user,
     edit_host,
     edit_user,
+    get_config,
     get_host,
     get_traffic,
     get_user,
-    init_db,
     list_config,
     list_hosts,
     list_users_with_traffic,
@@ -63,8 +64,85 @@ def _center(text: str, width: int) -> str:
     return " " * left + text + " " * (pad - left)
 
 
-# ── modals: users ─────────────────────────────────────────────────────────────
+def _qr_unicode(text: str) -> str:
+    """Render a QR code as a compact Unicode string using half-block characters.
 
+    Each terminal row encodes two QR module rows using:
+      █  both dark
+      ▀  top dark, bottom light
+      ▄  top light, bottom dark
+      (space) both light
+    """
+    qr = qrcode.QRCode(border=2, error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(text)
+    qr.make(fit=True)
+    matrix = qr.get_matrix()  # list[list[bool]], True = dark
+
+    # Pad to even number of rows
+    if len(matrix) % 2:
+        matrix.append([False] * len(matrix[0]))
+
+    lines: list[str] = []
+    for y in range(0, len(matrix), 2):
+        row_top = matrix[y]
+        row_bot = matrix[y + 1]
+        line = ""
+        for top, bot in zip(row_top, row_bot):
+            if top and bot:
+                line += "█"
+            elif top:
+                line += "▀"
+            elif bot:
+                line += "▄"
+            else:
+                line += " "
+        lines.append(line)
+    return "\n".join(lines)
+
+
+# ── modal: user QR ────────────────────────────────────────────────────────────
+
+
+class UserQRModal(BaseModal):
+    """Show a subscription QR code for a user."""
+
+    def __init__(self, username: str, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.username = username
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box-qr"):
+            yield Static(f"QR code — {self.username}", classes="modal-title")
+            yield Static("", id="qr-display", classes="qr-display")
+            yield Static("", id="qr-url", classes="qr-url")
+            with Horizontal(classes="button-row"):
+                yield Button("Close", id="close", variant="primary")
+
+    async def on_mount(self) -> None:
+        row = get_user(self.username)
+        if not row:
+            self.query_one("#qr-display").update("[red]User not found.[/red]")
+            return
+
+        sid             = row["sid"]
+        sub_path        = get_config("subscription_path", "/sub")
+        base_url        = get_config("base_url", "").rstrip("/")
+        if not base_url:
+            url = f"(set base_url in config){sub_path}/{sid}"
+            self.query_one("#qr-display").update(
+                "[yellow]Set [bold]base_url[/bold] config key to generate a QR code.[/yellow]"
+            )
+        else:
+            url = f"{base_url}{sub_path}/{sid}"
+            self.query_one("#qr-display").update(_qr_unicode(url))
+
+        self.query_one("#qr-url").update(url)
+        self.set_focus(self.query_one("#close"))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        await self.key_escape()
+
+# ── modals: users ─────────────────────────────────────────────────────────────
 
 class UserCreateModal(BaseModal):
     """Create a new user."""
@@ -466,6 +544,7 @@ class UsersContent(Static):
         Binding("c", "create_user", "Create"),
         Binding("e", "edit_user", "Edit"),
         Binding("d", "delete_user", "Delete"),
+        Binding("q", "show_qr", "QR code"),
         Binding("r", "refresh", "Refresh"),
     ]
 
@@ -538,6 +617,11 @@ class UsersContent(Static):
             return
         self.app.push_screen(UserDeleteModal(username, self._refresh_table))
 
+    async def action_show_qr(self) -> None:
+        username = self._selected_username
+        if not username:
+            return
+        self.app.push_screen(UserQRModal(username))
 
 class TrafficContent(Static):
     """Traffic tab — read-only per-user usage overview."""
@@ -749,6 +833,29 @@ BaseModal > Container {
     align: center middle;
 }
 
+.modal-box-qr {
+    background: $panel;
+    border: round $primary;
+    padding: 1 2;
+    width: 70;
+    height: auto;
+    max-height: 90vh;
+}
+
+.qr-display {
+    text-align: center;
+    width: 1fr;
+    padding: 1 0;
+}
+
+.qr-url {
+    text-align: center;
+    color: $text-muted;
+    width: 1fr;
+    margin-bottom: 1;
+    overflow: hidden;
+}
+
 .modal-box {
     background: $panel;
     border: round $primary;
@@ -831,5 +938,4 @@ BaseModal > Container {
 # ── entrypoint ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    init_db()
     AdminApp().run()
