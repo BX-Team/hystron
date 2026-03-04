@@ -41,11 +41,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /var/lib/hystron/templates \
-    && chmod +x /code/start.sh
+    && chmod +x /code/start.sh \
+    && ln -s /code/.venv/bin/hystron /usr/local/bin/hystron
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:9000/ 2>/dev/null || curl -f http://localhost:9001/ 2>/dev/null || exit 1
-
-EXPOSE 9000 9001
+    CMD /bin/sh -c "curl -f http://localhost:9000/health || exit 1"
 
 ENTRYPOINT ["/code/start.sh"]
