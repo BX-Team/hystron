@@ -103,9 +103,6 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
                 "hysteriaSettings": {
                     "version": 2,
                     "auth": f"{uname}:{pwd}",
-                    "congestion": "brutal",
-                    "up": "100mbps",
-                    "down": "100mbps",
                 },
                 "security": "tls",
                 "tlsSettings": {

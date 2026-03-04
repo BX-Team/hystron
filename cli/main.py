@@ -15,11 +15,10 @@ from rich.table import Table
 #    HYST_DB_PATH points to a real file on the host) ─────────────────────────
 try:
     from app.database import (
-        init_db,
         create_user, edit_user, delete_user, get_user, list_users, user_exists,
         get_traffic,
         create_host, edit_host, delete_host, get_host, list_hosts,
-        list_config, get_config, set_config, delete_config,
+        list_config, set_config, delete_config,
     )
     from app.utils.sub import fmt_bytes
     _DB_AVAILABLE = True
