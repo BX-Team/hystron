@@ -5,26 +5,28 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
-from ..database import get_db, get_traffic
+from ..database import get_config, get_db, get_traffic
 from ..utils.sub import (
-    make_links, make_base_headers,
+    build_xray, make_links, make_base_headers,
     build_singbox, build_clash, build_plain, build_browser_ctx,
 )
 
 router    = APIRouter(tags=["Subscription"])
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates"))
 
+SUBSCRIPTION_PATH = get_config("subscription_path", "/sub")
 _BROWSER_KW = ("Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "TelegramBot", "WhatsApp")
-_RE_SINGBOX = re.compile(r"sing-box|Hiddify|SFI|SFA|SFM", re.IGNORECASE)
-_RE_CLASH   = re.compile(r"Clash|Stash|mihomo", re.IGNORECASE)
+_RE_SINGBOX = re.compile(r"^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*[Ss]ing[\-b]?ox.*")
+_RE_CLASH   = re.compile(r"^([Cc]lash[\-\.]?[Vv]erge|[Cc]lash[\-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)")
+_RE_XRAY    = re.compile(r"^([Vv]2rayNG|[Vv]2rayN|[Ss]treisand|[Hh]app|[Kk]tor\-client)")
 
 
 def _get_base_url(request: Request) -> str:
     return f"{request.url.scheme}://{request.url.netloc}"
 
 
-@router.head("/sub/{sid}")
-@router.get("/sub/{sid}")
+@router.head(f"{SUBSCRIPTION_PATH}/{{sid}}")
+@router.get(f"{SUBSCRIPTION_PATH}/{{sid}}")
 async def subscription(sid: str, request: Request):
     conn = get_db()
     cur  = conn.cursor()
@@ -37,7 +39,7 @@ async def subscription(sid: str, request: Request):
 
     base_url   = _get_base_url(request)
     uname, pwd = user["username"], user["password"]
-    sub_url    = f"{base_url}/sub/{sid}"
+    sub_url    = f"{base_url}{SUBSCRIPTION_PATH}/{sid}"
     link_list  = make_links(uname, pwd)
     ua         = request.headers.get("user-agent", "")
     accept     = request.headers.get("accept", "")
@@ -52,12 +54,14 @@ async def subscription(sid: str, request: Request):
 
     if not is_browser:
         print(f"\nsub: {uname} | {ua} | {request.client.host}\n")
-        title_b64, base_headers = make_base_headers(uname, day, alltime, base_url, sid)
+        title_b64, base_headers = make_base_headers(uname, day, alltime, base_url, SUBSCRIPTION_PATH, sid)
 
         if _RE_SINGBOX.search(ua):
             return build_singbox(uname, pwd, base_headers)
         if _RE_CLASH.search(ua):
             return build_clash(uname, pwd, base_headers)
+        if _RE_XRAY.search(ua):
+            return build_xray(uname, pwd, base_headers)
         return build_plain(uname, pwd, title_b64, base_headers)
 
     print(f"\nbrowser: {uname} | {request.client.host}\n")

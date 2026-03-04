@@ -2,8 +2,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from cli.main import status
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, status
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -44,7 +43,7 @@ def robots():
 
 
 internal_app = FastAPI()
-internal_app.include_router(users.router, prefix="/api")
-internal_app.include_router(traffic.router, prefix="/api")
-internal_app.include_router(hosts.router, prefix="/api")
-internal_app.include_router(config.router, prefix="/api")
+internal_app.include_router(users.router)
+internal_app.include_router(traffic.router)
+internal_app.include_router(hosts.router)
+internal_app.include_router(config.router)

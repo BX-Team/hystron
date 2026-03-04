@@ -10,9 +10,10 @@ from ..database import list_hosts, get_config
 def make_links(uname: str, pwd: str) -> list[dict]:
     return [
         {
-            "uri":   f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
-            "label": h["name"],
-            "host":  h["address"],
+            "uri":    f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
+            "label":  h["name"],
+            "host":   h["address"],
+            "status": "unknown",
         }
         for h in list_hosts(active_only=True)
     ]
@@ -26,7 +27,7 @@ def fmt_bytes(n: int) -> str:
     return f"{n:.1f} PB"
 
 
-def make_base_headers(uname: str, day: int, alltime: int, base_url: str, sid: str) -> tuple[str, dict]:
+def make_base_headers(uname: str, day: int, alltime: int, base_url: str, subscription_path: str, sid: str) -> tuple[str, dict]:
     profile_name_tpl = get_config("profile_name_tpl", "hysteria for {uname}")
     profile_name = profile_name_tpl.format(uname=uname)
     title_b64    = base64.b64encode(profile_name.encode()).decode()
@@ -34,7 +35,7 @@ def make_base_headers(uname: str, day: int, alltime: int, base_url: str, sid: st
         "profile-update-interval": "12",
         "subscription-userinfo": f"upload=0; download={day}; total={alltime}; expire=0",
         "content-disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(profile_name)}",
-        "profile-web-page-url": f"{base_url}/sub/{sid}",
+        "profile-web-page-url": f"{base_url}{subscription_path}/{sid}",
     }
     return title_b64, headers
 
@@ -72,9 +73,52 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
         f"    skip-cert-verify: true\n"
         for h in hosts
     )
+    proxy_names_yaml = "\n      - ".join(h["name"] for h in hosts)
+    template = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates/clash.yaml")).read()
     return PlainTextResponse(
-        open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates/clash.yaml")).read().format(proxies=proxies_yaml.rstrip("\n")),
+        template.format(proxy_names_yaml, proxies=proxies_yaml.rstrip("\n")),
         media_type="text/yaml",
+        headers=base_headers,
+    )
+
+
+def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
+    hosts = list_hosts(active_only=True)
+    config = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates/xray.json")))
+
+    proxy_tags: list[str] = []
+    for h in hosts:
+        tag = h["name"]
+        proxy_tags.append(tag)
+        config["outbounds"].append({
+            "tag": tag,
+            "protocol": "hysteria",
+            "settings": {
+                "version": 2,
+                "address": h["address"],
+                "port": h["port"],
+            },
+            "streamSettings": {
+                "network": "hysteria",
+                "hysteriaSettings": {
+                    "version": 2,
+                    "auth": f"{uname}:{pwd}",
+                    "congestion": "brutal",
+                    "up": "100mbps",
+                    "down": "100mbps",
+                },
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": h["address"],
+                    "allowInsecure": True,
+                    "alpn": ["h3"],
+                },
+            },
+        })
+
+    return PlainTextResponse(
+        json.dumps(config, indent=2, ensure_ascii=False),
+        media_type="application/json",
         headers=base_headers,
     )
 
@@ -90,7 +134,7 @@ def build_plain(uname: str, pwd: str, title_b64: str, base_headers: dict) -> Pla
         headers={
             **base_headers,
             "profile-title": f"base64:{title_b64}",
-            "support-url": "https://t.me/wiybaa",
+            "support-url": get_config("support_url", "https://discord.gg/qNyybSSPm5"),
         },
     )
 
@@ -118,4 +162,5 @@ def build_browser_ctx(
         "links":         link_list,
         "traffic_tiles": traffic_tiles,
         "active":        active,
+        "support_url":   get_config("support_url", ""),
     }

@@ -1,5 +1,15 @@
 mode: rule
 log-level: info
+
+tun:
+  enable: true
+  stack: mixed
+  dns-hijack:
+    - "any:53"
+  auto-route: true
+  auto-detect-interface: true
+  strict-route: true
+
 dns:
   enable: true
   enhanced-mode: fake-ip
@@ -20,31 +30,15 @@ dns:
     - '*.msftconnecttest.com'
     - '*.msftncsi.com'
   ipv6: false
+
 proxies:
 {proxies}
+
 proxy-groups:
-  - name: LONDON
+  - name: PROXY
     type: select
     proxies:
-      - 🇬🇧
-  - name: STOCKHOLM
-    type: select
-    proxies:
-      - 🇸🇪
+      - {}
+
 rules:
-  - DOMAIN-SUFFIX,vsassets.io,LONDON
-  - IP-CIDR,128.116.0.0/17,LONDON
-  - IP-CIDR,23.173.192.0/24,LONDON
-  - IP-CIDR,103.140.28.0/23,LONDON
-  - IP-CIDR,141.193.3.0/24,LONDON
-  - IP-CIDR,205.201.62.0/24,LONDON
-  - GEOSITE,youtube,STOCKHOLM
-  - GEOSITE,nixos,DIRECT
-  - GEOSITE,reddit,DIRECT
-  - GEOSITE,steam,DIRECT
-  - GEOSITE,category-ru,DIRECT
-  - GEOSITE,category-ads-all,REJECT
-  - GEOIP,RU,DIRECT
-  - GEOIP,PRIVATE,DIRECT
-  - DOMAIN-SUFFIX,wiyba.org,DIRECT
-  - MATCH,LONDON
+  - MATCH,PROXY
