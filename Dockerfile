@@ -7,6 +7,12 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -21,18 +27,24 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:${PYTHON_VERSION}-slim-bookworm
 
+ARG APP_VERSION=dev
+
 COPY --from=builder /build /code
 WORKDIR /code
 
-ARG APP_VERSION=dev
 ENV PATH="/code/.venv/bin:$PATH" \
     HYST_DB_PATH=/var/lib/hystron/app.db \
     APP_VERSION=${APP_VERSION}
 
-RUN mkdir -p /var/lib/hystron
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY start.sh /code/start.sh
-RUN chmod +x /code/start.sh
+RUN mkdir -p /var/lib/hystron \
+    && chmod +x /code/start.sh
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:9000/ 2>/dev/null || curl -f http://localhost:9001/ 2>/dev/null || exit 1
 
 EXPOSE 9000 9001
 

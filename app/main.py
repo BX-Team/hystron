@@ -2,6 +2,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
+from cli.main import status
 from fastapi import FastAPI, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -31,6 +32,10 @@ public_app.include_router(sub.router)
 @public_app.get("/")
 def root():
     return Response(status_code=404)
+
+@public_app.get("/health", response_model=dict, status_code=status.HTTP_200_OK, include_in_schema=False)
+async def health():
+    return {"status": "ok"}
 
 
 @public_app.get("/robots.txt")
