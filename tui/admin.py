@@ -1,0 +1,835 @@
+import os
+import sys
+
+# Allow running as a plain script: python tui/admin.py
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from collections.abc import Callable
+from datetime import datetime
+
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, Vertical
+from textual.coordinate import Coordinate
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Label,
+    Static,
+    Switch,
+    TabbedContent,
+    TabPane,
+)
+
+from app.database import (
+    create_host,
+    create_user,
+    delete_config,
+    delete_host,
+    delete_user,
+    edit_host,
+    edit_user,
+    get_host,
+    get_traffic,
+    get_user,
+    init_db,
+    list_config,
+    list_hosts,
+    list_users_with_traffic,
+    set_config,
+)
+from app.utils.sub import fmt_bytes
+from tui import BaseModal
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+
+def _fmt_ts(ts: int) -> str:
+    """Format unix timestamp → date string, or '—' when zero."""
+    if not ts:
+        return "\u2014"
+    try:
+        return datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
+    except (OSError, OverflowError, ValueError):
+        return str(ts)
+
+
+def _center(text: str, width: int) -> str:
+    pad = width - len(text)
+    left = pad // 2
+    return " " * left + text + " " * (pad - left)
+
+
+# ── modals: users ─────────────────────────────────────────────────────────────
+
+
+class UserCreateModal(BaseModal):
+    """Create a new user."""
+
+    def __init__(self, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box"):
+            yield Static("Create user", classes="modal-title")
+            with Vertical(classes="input-container"):
+                yield Input(placeholder="Username", id="username")
+                yield Input(placeholder="Traffic limit bytes  (0 = unlimited)", id="traffic_limit")
+                yield Input(placeholder="Expires at unix ts   (0 = never)", id="expires_at")
+            with Horizontal(classes="button-row"):
+                yield Button("Create", id="create", variant="success")
+                yield Button("Cancel", id="cancel", variant="error")
+
+    async def on_mount(self) -> None:
+        self.set_focus(self.query_one("#username"))
+
+    async def key_enter(self) -> None:
+        if not self.query_one("#cancel").has_focus:
+            await self.on_button_pressed(Button.Pressed(self.query_one("#create")))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create":
+            username = self.query_one("#username").value.strip()
+            if not username:
+                self.notify("Username is required", severity="error", title="Error")
+                return
+            tl_raw = self.query_one("#traffic_limit").value.strip()
+            ea_raw = self.query_one("#expires_at").value.strip()
+            try:
+                traffic_limit = int(tl_raw) if tl_raw else 0
+                expires_at = int(ea_raw) if ea_raw else 0
+            except ValueError:
+                self.notify("Traffic limit and expires must be integers", severity="error", title="Error")
+                return
+            result = create_user(username, traffic_limit=traffic_limit, expires_at=expires_at)
+            if result is None:
+                self.notify(f"User '{username}' already exists", severity="error", title="Error")
+                return
+            self.notify(
+                f"User created\npw: {result['password']}",
+                severity="success",
+                title=f"User '{username}'",
+            )
+            self.on_close()
+        await self.key_escape()
+
+
+class UserEditModal(BaseModal):
+    """Edit an existing user."""
+
+    def __init__(self, username: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.username = username
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box"):
+            yield Static(f"Edit user '{self.username}'", classes="modal-title")
+            with Vertical(classes="input-container"):
+                yield Input(placeholder="New password       (empty = keep)", id="password", password=True)
+                yield Input(placeholder="New SID            (empty = keep)", id="sid")
+                yield Input(placeholder="Traffic limit bytes (empty = keep)", id="traffic_limit")
+                yield Input(placeholder="Expires at unix ts  (empty = keep)", id="expires_at")
+                with Horizontal(classes="switch-row"):
+                    yield Label("Active: ")
+                    yield Switch(animate=False, id="active", value=True)
+            with Horizontal(classes="button-row"):
+                yield Button("Save", id="save", variant="success")
+                yield Button("Cancel", id="cancel", variant="error")
+
+    async def on_mount(self) -> None:
+        row = get_user(self.username)
+        if row:
+            self.query_one("#active").value = bool(row["active"])
+        self.set_focus(self.query_one("#password"))
+
+    async def key_enter(self) -> None:
+        if not self.query_one("#active").has_focus and not self.query_one("#cancel").has_focus:
+            await self.on_button_pressed(Button.Pressed(self.query_one("#save")))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save":
+            password = self.query_one("#password").value.strip() or None
+            sid = self.query_one("#sid").value.strip() or None
+            active = self.query_one("#active").value
+            tl_raw = self.query_one("#traffic_limit").value.strip()
+            ea_raw = self.query_one("#expires_at").value.strip()
+            try:
+                traffic_limit = int(tl_raw) if tl_raw else None
+                expires_at = int(ea_raw) if ea_raw else None
+            except ValueError:
+                self.notify("Traffic limit and expires must be integers", severity="error", title="Error")
+                return
+            edit_user(
+                self.username,
+                password=password,
+                sid=sid,
+                active=active,
+                traffic_limit=traffic_limit,
+                expires_at=expires_at,
+            )
+            self.notify(f"User '{self.username}' updated", severity="success", title="Success")
+            self.on_close()
+        await self.key_escape()
+
+
+class UserDeleteModal(BaseModal):
+    """Confirm user deletion."""
+
+    def __init__(self, username: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.username = username
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box-delete"):
+            yield Static(
+                f"Delete user '{self.username}'?\nThis cannot be undone.",
+                classes="modal-title",
+            )
+            with Horizontal(classes="button-row"):
+                yield Button("Delete", id="delete", variant="error")
+                yield Button("Cancel", id="cancel", variant="primary")
+
+    async def on_mount(self) -> None:
+        self.set_focus(self.query_one("#cancel"))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "delete":
+            delete_user(self.username)
+            self.notify(f"User '{self.username}' deleted", severity="success", title="Deleted")
+            self.on_close()
+        await self.key_escape()
+
+
+# ── modals: hosts ─────────────────────────────────────────────────────────────
+
+
+class HostCreateModal(BaseModal):
+    """Create a new host."""
+
+    def __init__(self, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box"):
+            yield Static("Create host", classes="modal-title")
+            with Vertical(classes="input-container"):
+                yield Input(placeholder="Address      (e.g. vpn.example.com)", id="address")
+                yield Input(placeholder="Name         (display label)", id="name")
+                yield Input(placeholder="Port         (default 443)", id="port")
+                yield Input(placeholder="API address  (e.g. http://127.0.0.1:25413)", id="api_address")
+                yield Input(placeholder="API secret", id="api_secret")
+                with Horizontal(classes="switch-row"):
+                    yield Label("Active: ")
+                    yield Switch(animate=False, id="active", value=True)
+            with Horizontal(classes="button-row"):
+                yield Button("Create", id="create", variant="success")
+                yield Button("Cancel", id="cancel", variant="error")
+
+    async def on_mount(self) -> None:
+        self.set_focus(self.query_one("#address"))
+
+    async def key_enter(self) -> None:
+        if not self.query_one("#active").has_focus and not self.query_one("#cancel").has_focus:
+            await self.on_button_pressed(Button.Pressed(self.query_one("#create")))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create":
+            address = self.query_one("#address").value.strip()
+            if not address:
+                self.notify("Address is required", severity="error", title="Error")
+                return
+            name = self.query_one("#name").value.strip() or address
+            port_raw = self.query_one("#port").value.strip()
+            api_address = self.query_one("#api_address").value.strip()
+            api_secret = self.query_one("#api_secret").value.strip()
+            active = self.query_one("#active").value
+            try:
+                port = int(port_raw) if port_raw else 443
+            except ValueError:
+                self.notify("Port must be a number", severity="error", title="Error")
+                return
+            result = create_host(address, name, api_address, api_secret, port=port, active=active)
+            if result is None:
+                self.notify(f"Host '{address}' already exists", severity="error", title="Error")
+                return
+            self.notify(f"Host '{address}' created", severity="success", title="Success")
+            self.on_close()
+        await self.key_escape()
+
+
+class HostEditModal(BaseModal):
+    """Edit an existing host."""
+
+    def __init__(self, address: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.address = address
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box"):
+            yield Static(f"Edit host '{self.address}'", classes="modal-title")
+            with Vertical(classes="input-container"):
+                yield Input(placeholder="Name        (empty = keep)", id="name")
+                yield Input(placeholder="Port        (empty = keep)", id="port")
+                yield Input(placeholder="API address (empty = keep)", id="api_address")
+                yield Input(placeholder="API secret  (empty = keep)", id="api_secret")
+                with Horizontal(classes="switch-row"):
+                    yield Label("Active: ")
+                    yield Switch(animate=False, id="active", value=True)
+            with Horizontal(classes="button-row"):
+                yield Button("Save", id="save", variant="success")
+                yield Button("Cancel", id="cancel", variant="error")
+
+    async def on_mount(self) -> None:
+        row = get_host(self.address)
+        if row:
+            self.query_one("#active").value = bool(row["active"])
+        self.set_focus(self.query_one("#name"))
+
+    async def key_enter(self) -> None:
+        if not self.query_one("#active").has_focus and not self.query_one("#cancel").has_focus:
+            await self.on_button_pressed(Button.Pressed(self.query_one("#save")))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save":
+            name = self.query_one("#name").value.strip() or None
+            port_raw = self.query_one("#port").value.strip()
+            api_address = self.query_one("#api_address").value.strip() or None
+            api_secret = self.query_one("#api_secret").value.strip() or None
+            active = self.query_one("#active").value
+            try:
+                port = int(port_raw) if port_raw else None
+            except ValueError:
+                self.notify("Port must be a number", severity="error", title="Error")
+                return
+            edit_host(
+                self.address,
+                name=name,
+                port=port,
+                api_address=api_address,
+                api_secret=api_secret,
+                active=active,
+            )
+            self.notify(f"Host '{self.address}' updated", severity="success", title="Success")
+            self.on_close()
+        await self.key_escape()
+
+
+class HostDeleteModal(BaseModal):
+    """Confirm host deletion."""
+
+    def __init__(self, address: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.address = address
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box-delete"):
+            yield Static(
+                f"Delete host '{self.address}'?\nThis cannot be undone.",
+                classes="modal-title",
+            )
+            with Horizontal(classes="button-row"):
+                yield Button("Delete", id="delete", variant="error")
+                yield Button("Cancel", id="cancel", variant="primary")
+
+    async def on_mount(self) -> None:
+        self.set_focus(self.query_one("#cancel"))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "delete":
+            delete_host(self.address)
+            self.notify(f"Host '{self.address}' deleted", severity="success", title="Deleted")
+            self.on_close()
+        await self.key_escape()
+
+
+# ── modals: config ────────────────────────────────────────────────────────────
+
+
+class ConfigEditModal(BaseModal):
+    """Edit the value of an existing config key."""
+
+    def __init__(self, key: str, value: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._key = key
+        self._value = value
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box"):
+            yield Static(f"Edit config '{self._key}'", classes="modal-title")
+            with Vertical(classes="input-container"):
+                yield Input(placeholder="Value", id="value")
+            with Horizontal(classes="button-row"):
+                yield Button("Save", id="save", variant="success")
+                yield Button("Cancel", id="cancel", variant="error")
+
+    async def on_mount(self) -> None:
+        inp = self.query_one("#value")
+        inp.value = self._value
+        self.set_focus(inp)
+
+    async def key_enter(self) -> None:
+        if not self.query_one("#cancel").has_focus:
+            await self.on_button_pressed(Button.Pressed(self.query_one("#save")))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save":
+            value = self.query_one("#value").value
+            set_config(self._key, value)
+            self.notify(f"Config '{self._key}' updated", severity="success", title="Success")
+            self.on_close()
+        await self.key_escape()
+
+
+class ConfigNewModal(BaseModal):
+    """Create a new config key/value pair."""
+
+    def __init__(self, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box"):
+            yield Static("New config entry", classes="modal-title")
+            with Vertical(classes="input-container"):
+                yield Input(placeholder="Key", id="key")
+                yield Input(placeholder="Value", id="value")
+            with Horizontal(classes="button-row"):
+                yield Button("Create", id="create", variant="success")
+                yield Button("Cancel", id="cancel", variant="error")
+
+    async def on_mount(self) -> None:
+        self.set_focus(self.query_one("#key"))
+
+    async def key_enter(self) -> None:
+        if not self.query_one("#cancel").has_focus:
+            await self.on_button_pressed(Button.Pressed(self.query_one("#create")))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create":
+            key = self.query_one("#key").value.strip()
+            value = self.query_one("#value").value
+            if not key:
+                self.notify("Key is required", severity="error", title="Error")
+                return
+            set_config(key, value)
+            self.notify(f"Config '{key}' created", severity="success", title="Success")
+            self.on_close()
+        await self.key_escape()
+
+
+class ConfigDeleteModal(BaseModal):
+    """Confirm config key deletion."""
+
+    def __init__(self, key: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._key = key
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box-delete"):
+            yield Static(
+                f"Delete config key '{self._key}'?\nThis cannot be undone.",
+                classes="modal-title",
+            )
+            with Horizontal(classes="button-row"):
+                yield Button("Delete", id="delete", variant="error")
+                yield Button("Cancel", id="cancel", variant="primary")
+
+    async def on_mount(self) -> None:
+        self.set_focus(self.query_one("#cancel"))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "delete":
+            delete_config(self._key)
+            self.notify(f"Config '{self._key}' deleted", severity="success", title="Deleted")
+            self.on_close()
+        await self.key_escape()
+
+
+# ── tab content widgets ───────────────────────────────────────────────────────
+
+
+class UsersContent(Static):
+    """Users tab — CRUD for user accounts."""
+
+    BINDINGS = [
+        Binding("c", "create_user", "Create"),
+        Binding("e", "edit_user", "Edit"),
+        Binding("d", "delete_user", "Delete"),
+        Binding("r", "refresh", "Refresh"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield DataTable(id="users-table")
+
+    async def on_mount(self) -> None:
+        self.table = self.query_one("#users-table", DataTable)
+        self.table.cursor_type = "row"
+        await self.action_refresh()
+
+    # ── data loading ──────────────────────────────────────────────────────────
+
+    async def action_refresh(self) -> None:
+        self.table.clear(columns=True)
+        rows = list_users_with_traffic()
+        if not rows:
+            self.table.add_columns("  (no users — press 'c' to create one)  ")
+            return
+
+        columns = ["#", "Username", "Active", "Traffic Limit", "Expires At", "Total Traffic", "SID"]
+        data = [
+            [
+                str(idx),
+                r["username"],
+                "\u2714" if r["active"] else "\u2716",
+                fmt_bytes(r["traffic_limit"]) if r["traffic_limit"] else "unlimited",
+                _fmt_ts(r["expires_at"]),
+                fmt_bytes(r["total"]),
+                r["sid"],
+            ]
+            for idx, r in enumerate(rows, 1)
+        ]
+        col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
+        self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
+        for row, orig in zip(data, rows):
+            self.table.add_row(*[_center(cell, col_widths[i]) for i, cell in enumerate(row)], key=orig["username"])
+
+    # ── selection helper ──────────────────────────────────────────────────────
+
+    @property
+    def _selected_username(self) -> str | None:
+        if not self.table.columns:
+            return None
+        try:
+            return self.table.coordinate_to_cell_key(Coordinate(self.table.cursor_row, 1)).row_key.value
+        except Exception:
+            return None
+
+    def _refresh_table(self) -> None:
+        self.run_worker(self.action_refresh)
+
+    # ── actions ───────────────────────────────────────────────────────────────
+
+    async def action_create_user(self) -> None:
+        self.app.push_screen(UserCreateModal(self._refresh_table))
+
+    async def action_edit_user(self) -> None:
+        username = self._selected_username
+        if not username:
+            return
+        self.app.push_screen(UserEditModal(username, self._refresh_table))
+
+    async def key_enter(self) -> None:
+        await self.action_edit_user()
+
+    async def action_delete_user(self) -> None:
+        username = self._selected_username
+        if not username:
+            return
+        self.app.push_screen(UserDeleteModal(username, self._refresh_table))
+
+
+class TrafficContent(Static):
+    """Traffic tab — read-only per-user usage overview."""
+
+    BINDINGS = [
+        Binding("r", "refresh", "Refresh"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield DataTable(id="traffic-table")
+
+    async def on_mount(self) -> None:
+        self.table = self.query_one("#traffic-table", DataTable)
+        self.table.cursor_type = "row"
+        await self.action_refresh()
+
+    async def action_refresh(self) -> None:
+        self.table.clear(columns=True)
+        rows = get_traffic()
+        if not rows:
+            self.table.add_columns("  (no traffic data yet)  ")
+            return
+
+        columns = ["#", "Username", "Hour", "Day", "Week", "Month", "Total"]
+        data = [
+            [
+                str(idx),
+                r["username"],
+                fmt_bytes(r["hour"]),
+                fmt_bytes(r["day"]),
+                fmt_bytes(r["week"]),
+                fmt_bytes(r["month"]),
+                fmt_bytes(r["total"]),
+            ]
+            for idx, r in enumerate(rows, 1)
+        ]
+        col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
+        self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
+        for row, orig in zip(data, rows):
+            self.table.add_row(*[_center(cell, col_widths[i]) for i, cell in enumerate(row)], key=orig["username"])
+
+
+class HostsContent(Static):
+    """Hosts tab — CRUD for Hysteria2 server hosts."""
+
+    BINDINGS = [
+        Binding("c", "create_host", "Create"),
+        Binding("e", "edit_host", "Edit"),
+        Binding("d", "delete_host", "Delete"),
+        Binding("r", "refresh", "Refresh"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield DataTable(id="hosts-table")
+
+    async def on_mount(self) -> None:
+        self.table = self.query_one("#hosts-table", DataTable)
+        self.table.cursor_type = "row"
+        await self.action_refresh()
+
+    async def action_refresh(self) -> None:
+        self.table.clear(columns=True)
+        rows = list_hosts()
+        if not rows:
+            self.table.add_columns("  (no hosts — press 'c' to create one)  ")
+            return
+
+        columns = ["#", "Address", "Name", "Port", "Active", "API Address"]
+        data = [
+            [
+                str(idx),
+                r["address"],
+                r["name"],
+                str(r["port"]),
+                "\u2714" if r["active"] else "\u2716",
+                r["api_address"],
+            ]
+            for idx, r in enumerate(rows, 1)
+        ]
+        col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
+        self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
+        for row, orig in zip(data, rows):
+            self.table.add_row(*[_center(cell, col_widths[i]) for i, cell in enumerate(row)], key=orig["address"])
+
+    @property
+    def _selected_address(self) -> str | None:
+        if not self.table.columns:
+            return None
+        try:
+            return self.table.coordinate_to_cell_key(Coordinate(self.table.cursor_row, 1)).row_key.value
+        except Exception:
+            return None
+
+    def _refresh_table(self) -> None:
+        self.run_worker(self.action_refresh)
+
+    async def action_create_host(self) -> None:
+        self.app.push_screen(HostCreateModal(self._refresh_table))
+
+    async def action_edit_host(self) -> None:
+        address = self._selected_address
+        if not address:
+            return
+        self.app.push_screen(HostEditModal(address, self._refresh_table))
+
+    async def key_enter(self) -> None:
+        await self.action_edit_host()
+
+    async def action_delete_host(self) -> None:
+        address = self._selected_address
+        if not address:
+            return
+        self.app.push_screen(HostDeleteModal(address, self._refresh_table))
+
+
+class ConfigContent(Static):
+    """Config tab — manage key/value settings."""
+
+    BINDINGS = [
+        Binding("e", "edit_config", "Edit"),
+        Binding("n", "new_config", "New"),
+        Binding("d", "delete_config", "Delete"),
+        Binding("r", "refresh", "Refresh"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield DataTable(id="config-table")
+
+    async def on_mount(self) -> None:
+        self.table = self.query_one("#config-table", DataTable)
+        self.table.cursor_type = "row"
+        await self.action_refresh()
+
+    async def action_refresh(self) -> None:
+        self.table.clear(columns=True)
+        cfg = list_config()
+        if not cfg:
+            self.table.add_columns("  (no config)  ")
+            return
+
+        items = list(cfg.items())
+        columns = ["#", "Key", "Value"]
+        data = [[str(idx), k, v] for idx, (k, v) in enumerate(items, 1)]
+        col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
+        self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
+        for row, (k, _) in zip(data, items):
+            self.table.add_row(*[_center(cell, col_widths[i]) for i, cell in enumerate(row)], key=k)
+
+    @property
+    def _selected_key(self) -> str | None:
+        if not self.table.columns:
+            return None
+        try:
+            return self.table.coordinate_to_cell_key(Coordinate(self.table.cursor_row, 1)).row_key.value
+        except Exception:
+            return None
+
+    def _refresh_table(self) -> None:
+        self.run_worker(self.action_refresh)
+
+    async def action_edit_config(self) -> None:
+        key = self._selected_key
+        if not key:
+            return
+        value = list_config().get(key, "")
+        self.app.push_screen(ConfigEditModal(key, value, self._refresh_table))
+
+    async def key_enter(self) -> None:
+        await self.action_edit_config()
+
+    async def action_new_config(self) -> None:
+        self.app.push_screen(ConfigNewModal(self._refresh_table))
+
+    async def action_delete_config(self) -> None:
+        key = self._selected_key
+        if not key:
+            return
+        self.app.push_screen(ConfigDeleteModal(key, self._refresh_table))
+
+
+# ── application ───────────────────────────────────────────────────────────────
+
+
+class AdminApp(App):
+    """Hystron Admin — terminal management interface."""
+
+    TITLE = "Hystron Admin"
+    SUB_TITLE = "terminal management interface"
+
+    CSS = """
+Screen {
+    background: $surface;
+}
+
+TabbedContent, TabPane {
+    height: 1fr;
+}
+
+DataTable {
+    height: 1fr;
+}
+
+UsersContent, TrafficContent, HostsContent, ConfigContent {
+    height: 1fr;
+}
+
+/* ── modal overlay ─────────────────────────────────────── */
+BaseModal > Container {
+    align: center middle;
+}
+
+.modal-box {
+    background: $panel;
+    border: round $primary;
+    padding: 1 2;
+    width: 66;
+    height: auto;
+}
+
+.modal-box-delete {
+    background: $panel;
+    border: round $error;
+    padding: 1 2;
+    width: 52;
+    height: auto;
+}
+
+.modal-title {
+    text-style: bold;
+    margin-bottom: 1;
+    text-align: center;
+    width: 1fr;
+}
+
+.input-container {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.input-container Input {
+    margin-bottom: 1;
+}
+
+.switch-row {
+    height: 3;
+    align: left middle;
+}
+
+.switch-row Label {
+    width: auto;
+    margin-right: 1;
+    padding-top: 1;
+}
+
+.button-row {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+.button-row Button {
+    margin: 0 1;
+}
+"""
+
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+        Binding("1", "switch_tab('users')", "Users", show=False),
+        Binding("2", "switch_tab('traffic')", "Traffic", show=False),
+        Binding("3", "switch_tab('hosts')", "Hosts", show=False),
+        Binding("4", "switch_tab('config')", "Config", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with TabbedContent(initial="users"):
+            with TabPane("Users [1]", id="users"):
+                yield UsersContent()
+            with TabPane("Traffic [2]", id="traffic"):
+                yield TrafficContent()
+            with TabPane("Hosts [3]", id="hosts"):
+                yield HostsContent()
+            with TabPane("Config [4]", id="config"):
+                yield ConfigContent()
+        yield Footer()
+
+    def action_switch_tab(self, tab_id: str) -> None:
+        self.query_one(TabbedContent).active = tab_id
+
+
+# ── entrypoint ────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    init_db()
+    AdminApp().run()
