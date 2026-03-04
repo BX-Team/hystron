@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from ...database import get_user, list_users_with_traffic, create_user, edit_user, delete_user, user_exists
 
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["Users"])
 
 
 class CreateBody(BaseModel):

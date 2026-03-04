@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 
 from ...database import get_traffic, user_exists
 
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["Traffic"])
 
 
 @router.get("/traffic")

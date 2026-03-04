@@ -11,7 +11,7 @@ from ..utils.sub import (
     build_singbox, build_clash, build_plain, build_browser_ctx,
 )
 
-router    = APIRouter()
+router    = APIRouter(tags=["Subscription"])
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates"))
 
 _BROWSER_KW = ("Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "TelegramBot", "WhatsApp")

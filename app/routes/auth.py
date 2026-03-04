@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse, Response
 
 from ..database import check_auth, get_config
 
-router = APIRouter()
+router = APIRouter(tags=["Auth"])
 
 
 @router.post("/auth")

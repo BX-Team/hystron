@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from ...database import list_hosts, get_host, create_host, edit_host, delete_host, host_exists
 
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["Hosts"])
 
 
 class CreateBody(BaseModel):

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from ...database import get_config, set_config, list_config, delete_config
 
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["Config"])
 
 
 class SetBody(BaseModel):
