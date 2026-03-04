@@ -7,6 +7,52 @@ from fastapi.responses import PlainTextResponse
 
 from ..database import list_hosts, get_config
 
+_BUNDLED_TEMPLATES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates"
+)
+
+_TEMPLATE_CONFIG_KEY: dict[str, str] = {
+    "singbox.json": "template_singbox",
+    "clash.yaml":   "template_clash",
+    "xray.json":    "template_xray",
+    "index.html":   "template_index",
+}
+
+
+def get_template_file(filename: str) -> str:
+    """
+    Resolve the path for *filename* using the following priority:
+      1. Per-format config key (e.g. ``template_singbox``) — if set and the file exists.
+      2. ``{templates_dir}/{filename}`` — if the file exists.
+      3. Bundled template shipped with the application.
+    """
+    cfg_key = _TEMPLATE_CONFIG_KEY.get(filename, "")
+    if cfg_key:
+        specific = get_config(cfg_key, "")
+        if specific and os.path.isfile(specific):
+            return specific
+
+    templates_dir = get_config("templates_dir", "/var/lib/hystron/templates")
+    if templates_dir:
+        candidate = os.path.join(templates_dir, filename)
+        if os.path.isfile(candidate):
+            return candidate
+
+    return os.path.join(_BUNDLED_TEMPLATES_DIR, filename)
+
+
+def get_templates_search_dirs() -> list[str]:
+    """
+    Return an ordered list of directories for Jinja2 template lookup.
+    Override directory (if it exists) comes first, bundled directory last.
+    """
+    dirs: list[str] = []
+    templates_dir = get_config("templates_dir", "/var/lib/hystron/templates")
+    if templates_dir and os.path.isdir(templates_dir):
+        dirs.append(templates_dir)
+    dirs.append(_BUNDLED_TEMPLATES_DIR)
+    return dirs
+
 def make_links(uname: str, pwd: str) -> list[dict]:
     return [
         {
@@ -42,7 +88,7 @@ def make_base_headers(uname: str, day: int, alltime: int, base_url: str, subscri
 
 def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
-    config = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates/singbox.json")))
+    config = json.load(open(get_template_file("singbox.json")))
     proxy_names = []
     for h in hosts:
         proxy_names.append(h["name"])
@@ -74,7 +120,7 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
         for h in hosts
     )
     proxy_names_yaml = "\n      - ".join(h["name"] for h in hosts)
-    template = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates/clash.yaml")).read()
+    template = open(get_template_file("clash.yaml")).read()
     return PlainTextResponse(
         template.format(proxy_names_yaml, proxies=proxies_yaml.rstrip("\n")),
         media_type="text/yaml",
@@ -84,7 +130,7 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
 
 def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
-    config = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates/xray.json")))
+    config = json.load(open(get_template_file("xray.json")))
 
     proxy_tags: list[str] = []
     for h in hosts:

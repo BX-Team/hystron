@@ -1,6 +1,6 @@
-import os
 import re
 
+import jinja2
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
@@ -9,10 +9,19 @@ from ..database import get_config, get_db, get_traffic
 from ..utils.sub import (
     build_xray, make_links, make_base_headers,
     build_singbox, build_clash, build_plain, build_browser_ctx,
+    get_templates_search_dirs,
 )
 
-router    = APIRouter(tags=["Subscription"])
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates"))
+router = APIRouter(tags=["Subscription"])
+
+def _make_templates() -> Jinja2Templates:
+    """Build a Jinja2Templates instance that checks the override directory first."""
+    return Jinja2Templates(
+        env=jinja2.Environment(
+            loader=jinja2.FileSystemLoader(get_templates_search_dirs()),
+            autoescape=jinja2.select_autoescape(["html"]),
+        )
+    )
 
 SUBSCRIPTION_PATH = get_config("subscription_path", "/sub")
 _BROWSER_KW = ("Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "TelegramBot", "WhatsApp")
@@ -67,4 +76,4 @@ async def subscription(sid: str, request: Request):
     print(f"\nbrowser: {uname} | {request.client.host}\n")
 
     ctx = build_browser_ctx(uname, user["active"], sub_url, link_list, hour, day, week, alltime)
-    return templates.TemplateResponse("index.html", {"request": request, **ctx})
+    return _make_templates().TemplateResponse("index.html", {"request": request, **ctx})

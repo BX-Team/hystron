@@ -63,6 +63,14 @@ def init_db():
         "subscription_path": "/sub",
         "support_url": "https://discord.gg/qNyybSSPm5",
         "base_url": "",
+        # Template overrides: directory and per-format paths.
+        # Per-format paths take precedence over templates_dir.
+        # If empty, falls back to templates_dir/<filename>, then bundled template.
+        "templates_dir":     "/var/lib/hystron/templates",
+        "template_singbox":  "",
+        "template_clash":    "",
+        "template_xray":     "",
+        "template_index":    "",
     }
     for k, v in defaults.items():
         cur.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v))

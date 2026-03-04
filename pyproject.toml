@@ -6,7 +6,7 @@ hystron = "cli.main:app"
 
 [project]
 name = "Hystron"
-version = "1.0.0"
+version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
   "annotated-doc==0.0.4",
@@ -33,28 +33,4 @@ dependencies = [
   "textual[syntax]>=2.1.2",
   "typer>=0.24.1",
   "qrcode>=8.0",
-]
-
-[tool.ruff]
-line-length = 120
-indent-width = 4
-respect-gitignore = true
-exclude = ["app/db/migrations"]
-fix = true
-
-[tool.ruff.lint]
-fixable = ["ALL"]
-
-[tool.ruff.lint.isort]
-combine-as-imports = true
-
-[tool.ruff.format]
-quote-style = "double"
-line-ending = "auto"
-docstring-code-format = false
-docstring-code-line-length = "dynamic"
-
-[dependency-groups]
-dev = [
-  "ruff>=0.11.6",
 ]

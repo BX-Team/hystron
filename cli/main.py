@@ -27,7 +27,8 @@ except Exception:
 
 # ── constants ─────────────────────────────────────────────────────────────────
 CONTAINER_NAME = os.environ.get("HYSTRON_CONTAINER", "hystron")
-IMAGE_NAME      = os.environ.get("HYSTRON_IMAGE",     "hystron")
+IMAGE_NAME      = os.environ.get("HYSTRON_IMAGE",     "ghcr.io/bx-team/hystron")
+INSTALL_DIR     = os.environ.get("HYSTRON_INSTALL_DIR", "/opt/hystron")
 
 console = Console()
 
@@ -42,6 +43,30 @@ def _require_db() -> None:
 
 def _docker(*args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(["docker", *args], check=check)
+
+
+def _compose_cmd() -> list[str] | None:
+    """Return the available docker compose command as a list, or None."""
+    try:
+        subprocess.run(["docker", "compose", "version"], check=True,
+                       capture_output=True)
+        return ["docker", "compose"]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    try:
+        subprocess.run(["docker-compose", "version"], check=True,
+                       capture_output=True)
+        return ["docker-compose"]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def _compose_file() -> str:
+    return os.path.join(INSTALL_DIR, "docker-compose.yml")
+
+
+def _compose_env() -> str:
+    return os.path.join(INSTALL_DIR, ".env")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -105,42 +130,67 @@ def status():
 # ── restart ───────────────────────────────────────────────────────────────────
 @app.command()
 def restart():
-    """Restart the Hystron Docker container."""
-    console.print(f"Restarting [bold]{CONTAINER_NAME}[/bold]...")
-    _docker("restart", CONTAINER_NAME)
+    """Restart the Hystron container (via docker compose if available)."""
+    compose = _compose_cmd()
+    cf = _compose_file()
+    if compose and os.path.isfile(cf):
+        console.print(f"Restarting via [bold]{''.join(compose)}[/bold]...")
+        env_args = ["--env-file", _compose_env()] if os.path.isfile(_compose_env()) else []
+        subprocess.run([*compose, "-f", cf, *env_args, "restart"], check=True)
+    else:
+        console.print(f"Restarting container [bold]{CONTAINER_NAME}[/bold]...")
+        _docker("restart", CONTAINER_NAME)
     console.print("[green]Done.[/green]")
 
 
 # ── update ────────────────────────────────────────────────────────────────────
 @app.command()
-def update():
-    """Rebuild the Docker image and restart the container."""
-    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    console.print(f"Building image [bold]{IMAGE_NAME}[/bold]...")
-    _docker("build", "-t", f"{IMAGE_NAME}:latest", script_dir)
+def update(
+    version: Optional[str] = typer.Option(None, "--version", "-v",
+                                           help="Image tag to pull (default: current or latest)"),
+):
+    """Pull a new image from the registry and recreate the container."""
+    compose = _compose_cmd()
+    cf = _compose_file()
 
-    console.print(f"Stopping container [bold]{CONTAINER_NAME}[/bold]...")
-    _docker("stop", CONTAINER_NAME, check=False)
-    _docker("rm",   CONTAINER_NAME, check=False)
+    # Resolve the tag to use
+    tag = version
+    if not tag:
+        version_file = os.path.join(INSTALL_DIR, ".hystron_version")
+        if os.path.isfile(version_file):
+            tag = open(version_file).read().strip() or "latest"
+        else:
+            tag = "latest"
 
-    # Re-run with the same flags by inspecting the old container first.
-    # Fall back to a simple restart when inspect data is unavailable.
-    inspect = subprocess.run(
-        ["docker", "inspect", "--format",
-         "{{range .HostConfig.PortBindings}}{{.}}{{end}}",
-         CONTAINER_NAME],
-        capture_output=True, text=True,
-    )
-    console.print(f"Starting new container [bold]{CONTAINER_NAME}[/bold]...")
-    _docker(
-        "run", "-d",
-        "--name", CONTAINER_NAME,
-        "--restart", "unless-stopped",
-        "-p", "9000:9000",
-        "-p", "9001:9001",
-        "-v", "/var/lib/hystron:/var/lib/hystron",
-        f"{IMAGE_NAME}:latest",
-    )
+    full_image = f"{IMAGE_NAME}:{tag}"
+    console.print(f"Pulling [bold]{full_image}[/bold]...")
+    _docker("pull", full_image)
+
+    if compose and os.path.isfile(cf):
+        env_args = ["--env-file", _compose_env()] if os.path.isfile(_compose_env()) else []
+        console.print(f"Recreating container via [bold]{' '.join(compose)}[/bold]...")
+        subprocess.run([*compose, "-f", cf, *env_args, "up", "-d", "--force-recreate"],
+                       check=True)
+    else:
+        console.print(f"Stopping container [bold]{CONTAINER_NAME}[/bold]...")
+        _docker("stop", CONTAINER_NAME, check=False)
+        _docker("rm",   CONTAINER_NAME, check=False)
+        console.print(f"Starting [bold]{CONTAINER_NAME}[/bold]...")
+        _docker(
+            "run", "-d",
+            "--name", CONTAINER_NAME,
+            "--restart", "unless-stopped",
+            "-p", "9000:9000",
+            "-p", "9001:9001",
+            "-v", "/var/lib/hystron:/var/lib/hystron",
+            "-e", "HYST_DB_PATH=/var/lib/hystron/app.db",
+            full_image,
+        )
+
+    # Persist the tag that is now running
+    if os.path.isdir(INSTALL_DIR):
+        open(os.path.join(INSTALL_DIR, ".hystron_version"), "w").write(tag)
+
     console.print("[green]Update complete.[/green]")
 
 

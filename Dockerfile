@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /var/lib/hystron \
+RUN mkdir -p /var/lib/hystron/templates \
     && chmod +x /code/start.sh
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \

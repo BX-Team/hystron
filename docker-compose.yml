@@ -1,20 +1,12 @@
 services:
   hystron:
-    image: ghcr.io/${GITHUB_REPOSITORY:-your-org/hystron}:${TAG:-latest}
+    image: ghcr.io/bx-team/hystron:${HYSTRON_VERSION:-latest}
     container_name: hystron
     restart: unless-stopped
     ports:
       - "${PUBLIC_PORT:-9000}:9000"
       - "${INTERNAL_PORT:-9001}:9001"
     volumes:
-      - hystron-data:/var/lib/hystron
+      - /var/lib/hystron:/var/lib/hystron
     environment:
       - HYST_DB_PATH=/var/lib/hystron/app.db
-
-volumes:
-  hystron-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /var/lib/hystron
