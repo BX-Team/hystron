@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Hystron installation script
-# Usage: sudo bash install.sh [install|uninstall|update]
+# Usage: sudo bash install.sh [--mirror <url>] [install|uninstall|update]
 set -euo pipefail
 
 REPO_URL="https://github.com/BX-Team/hystron"
 IMAGE_NAME="ghcr.io/bx-team/hystron"
 INSTALL_DIR="/opt/hystron"
 DATA_DIR="/var/lib/hystron"
+
+# PyPI mirror — override via --mirror flag or PYPI_MIRROR env var.
+# Example: --mirror https://mirrors.aliyun.com/pypi/simple/
+PYPI_MIRROR="${PYPI_MIRROR:-}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[hystron]${NC} $*"; }
@@ -103,11 +107,48 @@ fetch_compose() {
     info "docker-compose.yml downloaded."
 }
 
-# ── cli wrapper ───────────────────────────────────────────────────────────────
+# ── cli install ──────────────────────────────────────────────────────────────
 install_cli() {
-    cat > /usr/local/bin/hystron <<'WRAPPER'
+    local cli_venv="${INSTALL_DIR}/.cli-venv"
+    local cli_dir="${INSTALL_DIR}/cli"
+
+    if ! command -v python3 &>/dev/null; then
+        warn "python3 not found — skipping host CLI install. Use 'docker exec -i hystron hystron' instead."
+        return
+    fi
+    local pyver
+    pyver=$(python3 -c 'import sys; print(sys.version_info >= (3, 12))')
+    if [[ "$pyver" != "True" ]]; then
+        warn "Python 3.12+ is required for the host CLI. Skipping."
+        return
+    fi
+
+    info "Downloading CLI module..."
+    mkdir -p "${cli_dir}"
+    for f in __init__.py __main__.py main.py; do
+        curl -fsSL "${REPO_URL}/raw/refs/heads/master/cli/${f}" -o "${cli_dir}/${f}"
+    done
+
+    info "Creating CLI virtual environment at ${cli_venv}..."
+    python3 -m venv "${cli_venv}"
+
+    local pip_args=()
+    if [[ -n "${PYPI_MIRROR:-}" ]]; then
+        local mirror_host
+        mirror_host=$(python3 -c "from urllib.parse import urlparse; print(urlparse('${PYPI_MIRROR}').netloc)")
+        pip_args+=(--index-url "${PYPI_MIRROR}" --trusted-host "${mirror_host}")
+        info "Using PyPI mirror: ${PYPI_MIRROR}"
+    fi
+
+    "${cli_venv}/bin/pip" install --quiet --upgrade pip "${pip_args[@]}"
+    "${cli_venv}/bin/pip" install --quiet "${pip_args[@]}" httpx typer rich
+
+    cat > /usr/local/bin/hystron <<WRAPPER
 #!/usr/bin/env bash
-exec docker exec -i hystron hystron "$@"
+# Hystron CLI — talks to the container via HTTP (no docker exec overhead)
+export PYTHONPATH="${INSTALL_DIR}"
+export HYSTRON_API="\${HYSTRON_API:-http://127.0.0.1:${INTERNAL_PORT:-9001}}"
+exec "${cli_venv}/bin/python" -m cli "\$@"
 WRAPPER
     chmod +x /usr/local/bin/hystron
     info "CLI installed at /usr/local/bin/hystron"
@@ -115,6 +156,7 @@ WRAPPER
 
 remove_cli() {
     rm -f /usr/local/bin/hystron
+    rm -rf "${INSTALL_DIR}/.cli-venv" "${INSTALL_DIR}/cli"
     info "CLI removed."
 }
 
@@ -192,14 +234,50 @@ do_update() {
 
     $COMPOSE_CMD -f "${INSTALL_DIR}/docker-compose.yml" --env-file "${INSTALL_DIR}/.env" up -d
 
+    if [[ -d "${INSTALL_DIR}/cli" ]]; then
+        info "Updating CLI module..."
+        local cli_dir="${INSTALL_DIR}/cli"
+        for f in __init__.py __main__.py main.py; do
+            curl -fsSL "${REPO_URL}/raw/refs/heads/master/cli/${f}" -o "${cli_dir}/${f}"
+        done
+    fi
+
     info "Hystron updated to ${saved_version}."
 }
 
 # ── entrypoint ────────────────────────────────────────────────────────────────
 usage() {
-    echo "Usage: $0 {install|uninstall|update}"
+    echo "Usage: $0 [--mirror <pypi-mirror-url>] {install|uninstall|update}"
+    echo ""
+    echo "Options:"
+    echo "  --mirror <url>   PyPI mirror to use for pip (e.g. https://mirrors.aliyun.com/pypi/simple/)"
+    echo "                   Can also be set via the PYPI_MIRROR environment variable."
     exit 1
 }
+
+# Parse flags before the subcommand
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mirror)
+            [[ -z "${2:-}" ]] && error "--mirror requires a URL argument."
+            PYPI_MIRROR="$2"
+            shift 2
+            ;;
+        --mirror=*)
+            PYPI_MIRROR="${1#--mirror=}"
+            shift
+            ;;
+        install|uninstall|update)
+            break
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            error "Unknown argument: $1. Run $0 --help for usage."
+            ;;
+    esac
+done
 
 case "${1:-install}" in
     install)   do_install ;;

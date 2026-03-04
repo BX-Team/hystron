@@ -4,41 +4,55 @@
 import importlib.metadata
 import os
 import subprocess
-import sys
-from typing import Optional
+from typing import Any, Optional
 
+import httpx
 import typer
 from rich.console import Console
 from rich.table import Table
-
-# ── app bootstrap (database is available only inside the container or if
-#    HYST_DB_PATH points to a real file on the host) ─────────────────────────
-try:
-    from app.database import (
-        create_user, edit_user, delete_user, get_user, list_users, user_exists,
-        get_traffic,
-        create_host, edit_host, delete_host, get_host, list_hosts,
-        list_config, set_config, delete_config,
-    )
-    from app.utils.sub import fmt_bytes
-    _DB_AVAILABLE = True
-except Exception:
-    _DB_AVAILABLE = False
 
 # ── constants ─────────────────────────────────────────────────────────────────
 CONTAINER_NAME = os.environ.get("HYSTRON_CONTAINER", "hystron")
 IMAGE_NAME      = os.environ.get("HYSTRON_IMAGE",     "ghcr.io/bx-team/hystron")
 INSTALL_DIR     = os.environ.get("HYSTRON_INSTALL_DIR", "/opt/hystron")
 
+API_URL = os.environ.get("HYSTRON_API", "http://127.0.0.1:9001").rstrip("/")
+
 console = Console()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-def _require_db() -> None:
-    if not _DB_AVAILABLE:
-        console.print("[red]Database not accessible.[/red] Run this command inside the container "
-                      "or set [bold]HYST_DB_PATH[/bold] correctly.")
+def _fmt_bytes(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} PB"
+
+
+def _api(method: str, path: str, **kwargs: Any) -> Any:
+    """Execute an HTTP request against the Hystron internal API."""
+    url = f"{API_URL}{path}"
+    try:
+        r = httpx.request(method, url, timeout=10, **kwargs)
+    except httpx.ConnectError:
+        console.print(
+            f"[red]Cannot reach API at[/red] [bold]{API_URL}[/bold]\n"
+            "Is the container running?  "
+            "Override the address with [bold]HYSTRON_API[/bold]."
+        )
         raise typer.Exit(1)
+    except httpx.TimeoutException:
+        console.print(f"[red]Request timed out[/red] — {url}")
+        raise typer.Exit(1)
+    if r.status_code >= 400:
+        try:
+            err = r.json().get("error", r.text)
+        except Exception:
+            err = r.text
+        console.print(f"[red]API {r.status_code}:[/red] {err}")
+        raise typer.Exit(1)
+    return r.json()
 
 
 def _docker(*args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -207,12 +221,11 @@ app.add_typer(users_app, name="users")
 @users_app.command("list")
 def users_list():
     """List all users."""
-    _require_db()
-    rows = list_users()
+    rows = _api("GET", "/api/users")
     if not rows:
         console.print("No users found.")
         return
-    table = Table("username", "password", "active", "sid", "traffic_limit", "expires_at")
+    table = Table("username", "password", "active", "sid", "traffic_limit", "expires_at", "traffic_total")
     for u in rows:
         table.add_row(
             u["username"],
@@ -221,6 +234,7 @@ def users_list():
             u["sid"],
             str(u["traffic_limit"]),
             str(u["expires_at"]),
+            _fmt_bytes(u.get("traffic_total", 0)),
         )
     console.print(table)
 
@@ -232,11 +246,11 @@ def users_create(
     expires_at: int = typer.Option(0, "--expires-at", "-e", help="Expiry UNIX timestamp (0 = never)"),
 ):
     """Create a new user."""
-    _require_db()
-    result = create_user(username, traffic_limit=traffic_limit, expires_at=expires_at)
-    if result is None:
-        console.print(f"[red]User '{username}' already exists.[/red]")
-        raise typer.Exit(1)
+    result = _api("POST", "/api/users", json={
+        "username": username,
+        "traffic_limit": traffic_limit,
+        "expires_at": expires_at,
+    })
     console.print(f"[green]Created[/green]")
     console.print(f"  username : {result['username']}")
     console.print(f"  password : {result['password']}")
@@ -246,16 +260,12 @@ def users_create(
 @users_app.command("info")
 def users_info(username: str = typer.Argument(..., help="Username")):
     """Show details of a user."""
-    _require_db()
-    row = get_user(username)
-    if not row:
-        console.print(f"[red]User '{username}' not found.[/red]")
-        raise typer.Exit(1)
+    row = _api("GET", f"/api/users/{username}")
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row("username",      row["username"])
     table.add_row("password",      row["password"])
     table.add_row("sid",           row["sid"])
-    table.add_row("active",        "yes" if row["active"] else "no")
+    table.add_row("active",        "[green]yes[/green]" if row["active"] else "[red]no[/red]")
     table.add_row("traffic_limit", str(row["traffic_limit"]))
     table.add_row("expires_at",    str(row["expires_at"]))
     console.print(table)
@@ -271,12 +281,13 @@ def users_edit(
     expires_at:    Optional[int] = typer.Option(None, "--expires-at",    "-e"),
 ):
     """Edit an existing user."""
-    _require_db()
-    if not user_exists(username):
-        console.print(f"[red]User '{username}' not found.[/red]")
-        raise typer.Exit(1)
-    edit_user(username, password=password, sid=sid, active=active,
-              traffic_limit=traffic_limit, expires_at=expires_at)
+    body: dict[str, Any] = {}
+    if password      is not None: body["password"]      = password
+    if sid           is not None: body["sid"]           = sid
+    if active        is not None: body["active"]        = active
+    if traffic_limit is not None: body["traffic_limit"] = traffic_limit
+    if expires_at    is not None: body["expires_at"]    = expires_at
+    _api("PATCH", f"/api/users/{username}", json=body)
     console.print(f"[green]User '{username}' updated.[/green]")
 
 
@@ -286,14 +297,10 @@ def users_delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     """Delete a user."""
-    _require_db()
     if not yes:
         typer.confirm(f"Delete user '{username}'?", abort=True)
-    if delete_user(username):
-        console.print(f"[green]Deleted '{username}'.[/green]")
-    else:
-        console.print(f"[red]User '{username}' not found.[/red]")
-        raise typer.Exit(1)
+    _api("DELETE", f"/api/users/{username}")
+    console.print(f"[green]Deleted '{username}'.[/green]")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -314,25 +321,21 @@ def traffic_list(
     """Show traffic. Pass a username to see per-user stats."""
     if ctx.invoked_subcommand is not None:
         return
-    _require_db()
-    if username and not user_exists(username):
-        console.print(f"[red]User '{username}' not found.[/red]")
-        raise typer.Exit(1)
-    rows = get_traffic(username)
-    if not rows:
-        console.print("No traffic data yet.")
-        return
     periods = ["hour", "day", "week", "month", "total"]
     if username:
-        r = rows[0]
+        r = _api("GET", f"/api/traffic/{username}")
         table = Table(show_header=False, box=None, padding=(0, 2))
         for p in periods:
-            table.add_row(f"[bold]{p}[/bold]", fmt_bytes(r[p]))
+            table.add_row(f"[bold]{p}[/bold]", _fmt_bytes(r.get(p, 0)))
         console.print(table)
     else:
+        rows = _api("GET", "/api/traffic")
+        if not rows:
+            console.print("No traffic data yet.")
+            return
         table = Table("username", *periods)
         for r in rows:
-            table.add_row(r["username"], *[fmt_bytes(r[p]) for p in periods])
+            table.add_row(r["username"], *[_fmt_bytes(r.get(p, 0)) for p in periods])
         console.print(table)
 
 
@@ -349,8 +352,7 @@ app.add_typer(hosts_app, name="hosts")
 @hosts_app.command("list")
 def hosts_list():
     """List all hosts."""
-    _require_db()
-    rows = list_hosts()
+    rows = _api("GET", "/api/hosts")
     if not rows:
         console.print("No hosts found.")
         return
@@ -374,26 +376,24 @@ def hosts_create(
     active:    bool = typer.Option(True,"--active",           help="Enable host"),
 ):
     """Add a new Hysteria2 host."""
-    _require_db()
-    result = create_host(address, name, api_address, api_secret, port=port, active=active)
-    if result is None:
-        console.print(f"[red]Host '{address}' already exists.[/red]")
-        raise typer.Exit(1)
+    _api("POST", "/api/hosts", json={
+        "address":     address,
+        "name":        name,
+        "api_address": api_address,
+        "api_secret":  api_secret,
+        "port":        port,
+        "active":      active,
+    })
     console.print(f"[green]Host '{address}' created.[/green]")
 
 
 @hosts_app.command("info")
 def hosts_info(address: str = typer.Argument(..., help="Host address")):
     """Show details of a host."""
-    _require_db()
-    row = get_host(address)
-    if not row:
-        console.print(f"[red]Host '{address}' not found.[/red]")
-        raise typer.Exit(1)
+    row = _api("GET", f"/api/hosts/{address}")
     table = Table(show_header=False, box=None, padding=(0, 2))
     for key in ("address", "name", "port", "api_address", "api_secret", "active"):
-        val = row[key]
-        table.add_row(key, str(val))
+        table.add_row(key, str(row[key]))
     console.print(table)
 
 
@@ -407,12 +407,13 @@ def hosts_edit(
     active:      Optional[bool] = typer.Option(None, "--active"),
 ):
     """Edit an existing host."""
-    _require_db()
-    if not get_host(address):
-        console.print(f"[red]Host '{address}' not found.[/red]")
-        raise typer.Exit(1)
-    edit_host(address, name=name, port=port,
-              api_address=api_address, api_secret=api_secret, active=active)
+    body: dict[str, Any] = {}
+    if name        is not None: body["name"]        = name
+    if port        is not None: body["port"]        = port
+    if api_address is not None: body["api_address"] = api_address
+    if api_secret  is not None: body["api_secret"]  = api_secret
+    if active      is not None: body["active"]      = active
+    _api("PATCH", f"/api/hosts/{address}", json=body)
     console.print(f"[green]Host '{address}' updated.[/green]")
 
 
@@ -422,14 +423,10 @@ def hosts_delete(
     yes:     bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     """Delete a host."""
-    _require_db()
     if not yes:
         typer.confirm(f"Delete host '{address}'?", abort=True)
-    if delete_host(address):
-        console.print(f"[green]Deleted '{address}'.[/green]")
-    else:
-        console.print(f"[red]Host '{address}' not found.[/red]")
-        raise typer.Exit(1)
+    _api("DELETE", f"/api/hosts/{address}")
+    console.print(f"[green]Deleted '{address}'.[/green]")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -445,8 +442,7 @@ app.add_typer(config_app, name="config")
 @config_app.command("list")
 def config_list():
     """List all config keys."""
-    _require_db()
-    cfg = list_config()
+    cfg = _api("GET", "/api/config")
     if not cfg:
         console.print("No config found.")
         return
@@ -459,12 +455,8 @@ def config_list():
 @config_app.command("get")
 def config_get(key: str = typer.Argument(..., help="Config key")):
     """Get a config value."""
-    _require_db()
-    cfg = list_config()
-    if key not in cfg:
-        console.print(f"[red]Key '{key}' not found.[/red]")
-        raise typer.Exit(1)
-    console.print(f"{key} = {cfg[key]}")
+    result = _api("GET", f"/api/config/{key}")
+    console.print(f"{result['key']} = {result['value']}")
 
 
 @config_app.command("set")
@@ -473,8 +465,7 @@ def config_set(
     value: str = typer.Argument(..., help="New value"),
 ):
     """Set a config value."""
-    _require_db()
-    set_config(key, value)
+    _api("PUT", f"/api/config/{key}", json={"value": value})
     console.print(f"[green]{key}[/green] = {value}")
 
 
@@ -484,14 +475,10 @@ def config_delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     """Delete a config key."""
-    _require_db()
     if not yes:
         typer.confirm(f"Delete config key '{key}'?", abort=True)
-    if delete_config(key):
-        console.print(f"[green]Deleted '{key}'.[/green]")
-    else:
-        console.print(f"[red]Key '{key}' not found.[/red]")
-        raise typer.Exit(1)
+    _api("DELETE", f"/api/config/{key}")
+    console.print(f"[green]Deleted '{key}'.[/green]")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
