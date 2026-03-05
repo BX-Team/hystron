@@ -83,7 +83,7 @@ jobs:
         with:
           mode: COMMIT
           fromTag: ${{ steps.tag_search.outputs.latest_tag }}
-          toTag: v${{ inputs.version }}
+          toTag: ${{ github.ref }}
           configuration: ".github/changelog_configuration.json"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
