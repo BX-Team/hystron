@@ -111,13 +111,12 @@ def version():
 # ── tui ────────────────────────────────────────────────────────────────────────
 @app.command()
 def tui():
-    """Open the interactive terminal admin UI."""
+    """Open the interactive terminal admin UI (runs inside the container)."""
     try:
-        from tui.admin import AdminApp
-    except ImportError as exc:
-        console.print(f"[red]TUI unavailable:[/red] {exc}")
+        os.execvp("docker", ["docker", "exec", "-it", CONTAINER_NAME, "/code/.venv/bin/python", "-m", "tui"])
+    except FileNotFoundError:
+        console.print("[red]docker not found.[/red] Make sure Docker is installed and in PATH.")
         raise typer.Exit(1)
-    AdminApp().run()
 
 
 # ── status ────────────────────────────────────────────────────────────────────
