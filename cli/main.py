@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Hystron CLI — manage users, traffic, hosts, config and the Docker service."""
 
-import importlib.metadata
 import os
 import subprocess
 from typing import Any, Optional
@@ -18,6 +17,9 @@ INSTALL_DIR = os.environ.get("HYSTRON_INSTALL_DIR", "/opt/hystron")
 
 API_URL = os.environ.get("HYSTRON_API", "http://127.0.0.1:9001").rstrip("/")
 
+# Automatically updated during release process
+VERSION = "0.1.3"
+
 console = Console()
 
 
@@ -26,7 +28,7 @@ def _fmt_bytes(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
             return f"{n:.1f} {unit}"
-        n /= 1024
+        n /= 1024  # type: ignore
     return f"{n:.1f} PB"
 
 
@@ -97,13 +99,7 @@ app = typer.Typer(
 @app.command()
 def version():
     """Show Hystron version."""
-    ver = os.environ.get("APP_VERSION")
-    if not ver:
-        try:
-            ver = importlib.metadata.version("Hystron")
-        except importlib.metadata.PackageNotFoundError:
-            ver = "unknown"
-    console.print(f"[bold]Hystron[/bold] {ver}")
+    console.print(f"[bold]Hystron[/bold] {VERSION}")
 
 
 # ── tui ────────────────────────────────────────────────────────────────────────
@@ -185,7 +181,7 @@ def update(
         "curl -fsSL https://raw.githubusercontent.com/BX-Team/hystron/refs/heads/master/install.sh "
         "-o /tmp/hystron.sh && sudo bash /tmp/hystron.sh update"
     )
-    console.print(f"Running update script...")
+    console.print("Running update script...")
     result = subprocess.run(cmd, shell=True)
     if result.returncode != 0:
         raise typer.Exit(result.returncode)
@@ -248,7 +244,7 @@ def users_create(
             "expires_at": expires_at,
         },
     )
-    console.print(f"[green]Created[/green]")
+    console.print("[green]Created[/green]")
     console.print(f"  username : {result['username']}")
     console.print(f"  password : {result['password']}")
     console.print(f"  sid      : {result['sid']}")

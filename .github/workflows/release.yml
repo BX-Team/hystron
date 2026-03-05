@@ -18,7 +18,30 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  set-release-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ github.ref }}
+
+    - name: Set Version
+      run: |
+        VERSION="${{ inputs.version }}"
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/g" pyproject.toml
+        sed -i "/^name = \"hystron\"/,/^version = /{s/^version = \".*\"/version = \"$VERSION\"/}" uv.lock
+        sed -i "s/^VERSION = \".*\"/VERSION = \"$VERSION\"/g" cli/main.py
+
+    - name: Commit Changes
+      uses: stefanzweifel/git-auto-commit-action@v7
+      with:
+        commit_message: 'chore(release): bump version to ${{ inputs.version }}'
+
   build-and-push:
+    needs: set-release-version
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
     permissions:
@@ -26,7 +49,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -68,7 +91,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 

@@ -1,5 +1,4 @@
 ARG PYTHON_VERSION=3.12
-ARG APP_VERSION=dev
 
 FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS builder
 
@@ -27,14 +26,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:${PYTHON_VERSION}-slim-bookworm
 
-ARG APP_VERSION=dev
-
 COPY --from=builder /build /code
 WORKDIR /code
 
 ENV PATH="/code/.venv/bin:$PATH" \
-    HYST_DB_PATH=/var/lib/hystron/app.db \
-    APP_VERSION=${APP_VERSION}
+    HYST_DB_PATH=/var/lib/hystron/app.db
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
