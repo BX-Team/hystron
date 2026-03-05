@@ -8,20 +8,22 @@
     pkgs = nixpkgs.legacyPackages.${system};
 
     env = pkgs.python3.withPackages (ps: with ps; [
-      fastapi 
-      uvicorn 
-      httpx 
+      fastapi
+      uvicorn
+      httpx
       jinja2
+      pydantic
+      requests
+      textual
+      typer
+      rich
+      qrcode
     ]);
   in {
-    packages.${system}.default = pkgs.writeShellScriptBin "hyst-panel" ''
-      export HYST_DB_PATH="''${HYST_DB_PATH:-/var/lib/hyst-panel/app.db}"
+    packages.${system}.default = pkgs.writeShellScriptBin "hystron" ''
+      export HYST_DB_PATH="''${HYST_DB_PATH:-/var/lib/hystron/app.db}"
       mkdir -p "$(dirname "$HYST_DB_PATH")"
-      if [ $# -eq 0 ]; then
-        exec ${env}/bin/python ${self}/run.py run
-      else
-        exec ${env}/bin/python ${self}/run.py "$@"
-      fi
+      exec ${env}/bin/python ${self}/main.py
     '';
   };
 }
