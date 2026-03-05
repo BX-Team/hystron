@@ -9,6 +9,12 @@ class BaseModal(ModalScreen):
     def _any_input_focused(self) -> bool:
         return any(inp.has_focus for inp in self.query(Input))
 
+    async def key_space(self) -> None:
+        """Insert a literal space into the focused Input (prevent event from bubbling)."""
+        focused = self.focused
+        if isinstance(focused, Input):
+            focused.insert_text_at_cursor(" ")
+
     async def key_left(self) -> None:
         """Move focus left on arrow key press."""
         if not self._any_input_focused():

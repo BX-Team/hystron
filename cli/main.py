@@ -231,7 +231,7 @@ def users_list():
             u["password"],
             "[green]yes[/green]" if u["active"] else "[red]no[/red]",
             u["sid"],
-            str(u["traffic_limit"]),
+            _fmt_bytes(u["traffic_limit"]) if u["traffic_limit"] else "unlimited",
             str(u["expires_at"]),
             _fmt_bytes(u.get("traffic_total", 0)),
         )
@@ -241,13 +241,13 @@ def users_list():
 @users_app.command("create")
 def users_create(
     username: str = typer.Argument(..., help="New username"),
-    traffic_limit: int = typer.Option(0, "--traffic-limit", "-t", help="Traffic limit in bytes (0 = unlimited)"),
+    traffic_limit: float = typer.Option(0.0, "--traffic-limit", "-t", help="Traffic limit in GB (0 = unlimited)"),
     expires_at: int = typer.Option(0, "--expires-at", "-e", help="Expiry UNIX timestamp (0 = never)"),
 ):
     """Create a new user."""
     result = _api("POST", "/api/users", json={
         "username": username,
-        "traffic_limit": traffic_limit,
+        "traffic_limit": int(traffic_limit * 1024 ** 3),
         "expires_at": expires_at,
     })
     console.print(f"[green]Created[/green]")
@@ -265,7 +265,7 @@ def users_info(username: str = typer.Argument(..., help="Username")):
     table.add_row("password",      row["password"])
     table.add_row("sid",           row["sid"])
     table.add_row("active",        "[green]yes[/green]" if row["active"] else "[red]no[/red]")
-    table.add_row("traffic_limit", str(row["traffic_limit"]))
+    table.add_row("traffic_limit", _fmt_bytes(row["traffic_limit"]) if row["traffic_limit"] else "unlimited")
     table.add_row("expires_at",    str(row["expires_at"]))
     console.print(table)
 
@@ -276,15 +276,15 @@ def users_edit(
     password: Optional[str]  = typer.Option(None, "--password", "-p"),
     sid:      Optional[str]  = typer.Option(None, "--sid",      "-s"),
     active:   Optional[bool] = typer.Option(None, "--active",   "-a"),
-    traffic_limit: Optional[int] = typer.Option(None, "--traffic-limit", "-t"),
-    expires_at:    Optional[int] = typer.Option(None, "--expires-at",    "-e"),
+    traffic_limit: Optional[float] = typer.Option(None, "--traffic-limit", "-t", help="Traffic limit in GB"),
+    expires_at:    Optional[int]   = typer.Option(None, "--expires-at",    "-e"),
 ):
     """Edit an existing user."""
     body: dict[str, Any] = {}
     if password      is not None: body["password"]      = password
     if sid           is not None: body["sid"]           = sid
     if active        is not None: body["active"]        = active
-    if traffic_limit is not None: body["traffic_limit"] = traffic_limit
+    if traffic_limit is not None: body["traffic_limit"] = int(traffic_limit * 1024 ** 3)
     if expires_at    is not None: body["expires_at"]    = expires_at
     _api("PATCH", f"/api/users/{username}", json=body)
     console.print(f"[green]User '{username}' updated.[/green]")
@@ -460,12 +460,13 @@ def config_get(key: str = typer.Argument(..., help="Config key")):
 
 @config_app.command("set")
 def config_set(
-    key:   str = typer.Argument(..., help="Config key"),
-    value: str = typer.Argument(..., help="New value"),
+    key:   str       = typer.Argument(..., help="Config key"),
+    value: list[str] = typer.Argument(..., help="New value (words joined by spaces)"),
 ):
     """Set a config value."""
-    _api("PUT", f"/api/config/{key}", json={"value": value})
-    console.print(f"[green]{key}[/green] = {value}")
+    v = " ".join(value)
+    _api("PUT", f"/api/config/{key}", json={"value": v})
+    console.print(f"[green]{key}[/green] = {v}")
 
 
 @config_app.command("delete")

@@ -156,7 +156,7 @@ class UserCreateModal(BaseModal):
             yield Static("Create user", classes="modal-title")
             with Vertical(classes="input-container"):
                 yield Input(placeholder="Username", id="username")
-                yield Input(placeholder="Traffic limit bytes  (0 = unlimited)", id="traffic_limit")
+                yield Input(placeholder="Traffic limit GB     (0 = unlimited)", id="traffic_limit")
                 yield Input(placeholder="Expires at unix ts   (0 = never)", id="expires_at")
             with Horizontal(classes="button-row"):
                 yield Button("Create", id="create", variant="success")
@@ -178,10 +178,10 @@ class UserCreateModal(BaseModal):
             tl_raw = self.query_one("#traffic_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
             try:
-                traffic_limit = int(tl_raw) if tl_raw else 0
+                traffic_limit = int(float(tl_raw) * 1024 ** 3) if tl_raw else 0
                 expires_at = int(ea_raw) if ea_raw else 0
             except ValueError:
-                self.notify("Traffic limit and expires must be integers", severity="error", title="Error")
+                self.notify("Traffic limit must be a number (GB) and expires must be an integer", severity="error", title="Error")
                 return
             result = create_user(username, traffic_limit=traffic_limit, expires_at=expires_at)
             if result is None:
@@ -210,7 +210,7 @@ class UserEditModal(BaseModal):
             with Vertical(classes="input-container"):
                 yield Input(placeholder="New password       (empty = keep)", id="password", password=True)
                 yield Input(placeholder="New SID            (empty = keep)", id="sid")
-                yield Input(placeholder="Traffic limit bytes (empty = keep)", id="traffic_limit")
+                yield Input(placeholder="Traffic limit GB    (empty = keep)", id="traffic_limit")
                 yield Input(placeholder="Expires at unix ts  (empty = keep)", id="expires_at")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
@@ -237,10 +237,10 @@ class UserEditModal(BaseModal):
             tl_raw = self.query_one("#traffic_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
             try:
-                traffic_limit = int(tl_raw) if tl_raw else None
+                traffic_limit = int(float(tl_raw) * 1024 ** 3) if tl_raw else None
                 expires_at = int(ea_raw) if ea_raw else None
             except ValueError:
-                self.notify("Traffic limit and expires must be integers", severity="error", title="Error")
+                self.notify("Traffic limit must be a number (GB) and expires must be an integer", severity="error", title="Error")
                 return
             edit_user(
                 self.username,
