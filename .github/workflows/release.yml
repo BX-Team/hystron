@@ -19,6 +19,7 @@ env:
 
 jobs:
   set-release-version:
+    name: Set Release Version
     runs-on: ubuntu-latest
     permissions:
       contents: write
