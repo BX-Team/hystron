@@ -3,12 +3,36 @@ from datetime import datetime, timezone
 
 import httpx
 
-from .database import get_db, list_hosts, get_config
+from .database import edit_user, get_config, get_db, get_traffic, get_user, list_hosts
+
+_last_reset_date = None
+
+
+async def reset_daily_limits():
+    """Reset user active status at the start of each day (00:00 UTC)."""
+    global _last_reset_date
+    now = datetime.now(timezone.utc)
+    current_date = now.date()
+
+    if _last_reset_date != current_date and now.hour == 0 and now.minute < 10:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET active = 1 WHERE active = 0 AND traffic_limit > 0")
+            count = cur.rowcount
+            conn.commit()
+            conn.close()
+            if count > 0:
+                print(f"Daily reset: reactivated {count} users at {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+            _last_reset_date = current_date
+        except Exception as e:
+            print(f"Error during daily reset: {e}")
 
 
 async def poll_hysteria():
     async with httpx.AsyncClient(timeout=10) as client:
         while True:
+            await reset_daily_limits()
             forbidden_raw = get_config("forbidden_domains", "")
             forbidden = [d.strip() for d in forbidden_raw.split(",") if d.strip()]
 
@@ -51,6 +75,18 @@ async def poll_hysteria():
                         conn.commit()
                         conn.close()
                         await client.get(f"{api_address}/traffic?clear=1", headers=headers)
+
+                        for username in r.json().keys():
+                            try:
+                                user = get_user(username)
+                                if user and user["traffic_limit"] > 0:
+                                    total = get_traffic(username)
+                                    if total and total[0]["day"] >= user["traffic_limit"]:
+                                        edit_user(username, active=False)
+                                        await client.post(f"{api_address}/kick", json={"id": username}, headers=headers)
+                                        print(f"kicked {username} on {address}: daily traffic limit exceeded")
+                            except Exception as e:
+                                print(f"error checking limit for {username} on {address}: {e}")
                 except Exception as e:
                     print(f"error traffic {address}: {e}")
 
