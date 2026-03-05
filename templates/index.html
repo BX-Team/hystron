@@ -204,7 +204,7 @@
     <div class="row" onclick="copyText('{{ l.uri }}')">
       <span class="name">{{ l.label }}</span>
       <div class="right">
-        <div class="dot {{ l.status if l.status in ('online', 'offline') else 'unknown' }}"></div>
+        <div class="dot unknown" data-host="{{ l.host }}"></div>
       </div>
     </div>
     {% endfor %}
@@ -389,6 +389,19 @@
     {% endif %}
 
     applyLang();
+
+    // Async host status check
+    (function () {
+      fetch('/hosts/status')
+        .then(function (r) { return r.json(); })
+        .then(function (statuses) {
+          document.querySelectorAll('.dot[data-host]').forEach(function (dot) {
+            var s = statuses[dot.getAttribute('data-host')];
+            if (s) { dot.className = 'dot ' + s; }
+          });
+        })
+        .catch(function () {});
+    })();
   </script>
 </body>
 </html>

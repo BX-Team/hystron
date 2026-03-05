@@ -162,49 +162,15 @@ def update(
     version: Optional[str] = typer.Option(None, "--version", "-v",
                                            help="Image tag to pull (default: current or latest)"),
 ):
-    """Pull a new image from the registry and recreate the container."""
-    compose = _compose_cmd()
-    cf = _compose_file()
-
-    # Resolve the tag to use
-    tag = version
-    if not tag:
-        version_file = os.path.join(INSTALL_DIR, ".hystron_version")
-        if os.path.isfile(version_file):
-            tag = open(version_file).read().strip() or "latest"
-        else:
-            tag = "latest"
-
-    full_image = f"{IMAGE_NAME}:{tag}"
-    console.print(f"Pulling [bold]{full_image}[/bold]...")
-    _docker("pull", full_image)
-
-    if compose and os.path.isfile(cf):
-        env_args = ["--env-file", _compose_env()] if os.path.isfile(_compose_env()) else []
-        console.print(f"Recreating container via [bold]{' '.join(compose)}[/bold]...")
-        subprocess.run([*compose, "-f", cf, *env_args, "up", "-d", "--force-recreate"],
-                       check=True)
-    else:
-        console.print(f"Stopping container [bold]{CONTAINER_NAME}[/bold]...")
-        _docker("stop", CONTAINER_NAME, check=False)
-        _docker("rm",   CONTAINER_NAME, check=False)
-        console.print(f"Starting [bold]{CONTAINER_NAME}[/bold]...")
-        _docker(
-            "run", "-d",
-            "--name", CONTAINER_NAME,
-            "--restart", "unless-stopped",
-            "-p", "9000:9000",
-            "-p", "9001:9001",
-            "-v", "/var/lib/hystron:/var/lib/hystron",
-            "-e", "HYST_DB_PATH=/var/lib/hystron/app.db",
-            full_image,
-        )
-
-    # Persist the tag that is now running
-    if os.path.isdir(INSTALL_DIR):
-        open(os.path.join(INSTALL_DIR, ".hystron_version"), "w").write(tag)
-
-    console.print("[green]Update complete.[/green]")
+    """Update Hystron by running the remote install script with the 'update' flag."""
+    cmd = (
+        "curl -fsSL https://raw.githubusercontent.com/BX-Team/hystron/refs/heads/master/install.sh "
+        "-o /tmp/hystron.sh && sudo bash /tmp/hystron.sh update"
+    )
+    console.print(f"Running update script...")
+    result = subprocess.run(cmd, shell=True)
+    if result.returncode != 0:
+        raise typer.Exit(result.returncode)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

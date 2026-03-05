@@ -1,11 +1,12 @@
 import re
 
+import httpx
 import jinja2
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
-from ..database import get_config, get_db, get_traffic
+from ..database import get_config, get_db, get_traffic, list_hosts
 from ..utils.sub import (
     build_xray, make_links, make_base_headers,
     build_singbox, build_clash, build_plain, build_browser_ctx,
@@ -25,6 +26,27 @@ def _make_templates() -> Jinja2Templates:
 
 SUBSCRIPTION_PATH = get_config("subscription_path", "/sub")
 _BROWSER_KW = ("Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "TelegramBot", "WhatsApp")
+
+
+@router.get("/hosts/status", include_in_schema=False)
+async def hosts_status():
+    """Return online/offline status for each active host (checked via their internal API)."""
+    hosts = list_hosts(active_only=True)
+    result = {}
+    async with httpx.AsyncClient(timeout=3) as client:
+        for h in hosts:
+            api_url = h["api_address"].rstrip("/")
+            try:
+                r = await client.get(
+                    f"{api_url}/traffic",
+                    headers={"Authorization": h["api_secret"]},
+                )
+                result[h["address"]] = "online" if r.status_code == 200 else "offline"
+            except Exception:
+                result[h["address"]] = "offline"
+    return result
+
+
 _RE_SINGBOX = re.compile(r"^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*[Ss]ing[\-b]?ox.*")
 _RE_CLASH   = re.compile(r"^([Cc]lash[\-\.]?[Vv]erge|[Cc]lash[\-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)")
 _RE_XRAY    = re.compile(r"^([Vv]2rayNG|[Vv]2rayN|[Ss]treisand|[Hh]app|[Kk]tor\-client)")

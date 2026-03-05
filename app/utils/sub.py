@@ -59,7 +59,6 @@ def make_links(uname: str, pwd: str) -> list[dict]:
             "uri":    f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
             "label":  h["name"],
             "host":   h["address"],
-            "status": "unknown",
         }
         for h in list_hosts(active_only=True)
     ]
