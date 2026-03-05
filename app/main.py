@@ -23,7 +23,11 @@ async def lifespan(_app: FastAPI):
 
 
 public_app = FastAPI(lifespan=lifespan)
-public_app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")), name="static")
+public_app.mount(
+    "/static",
+    StaticFiles(directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")),
+    name="static",
+)
 public_app.include_router(auth.router)
 public_app.include_router(sub.router)
 
@@ -32,7 +36,13 @@ public_app.include_router(sub.router)
 def root():
     return Response(status_code=404)
 
-@public_app.get("/health", response_model=dict, status_code=status.HTTP_200_OK, include_in_schema=False)
+
+@public_app.get(
+    "/health",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
 async def health():
     return {"status": "ok"}
 

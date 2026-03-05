@@ -4,7 +4,14 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ...database import list_hosts, get_host, create_host, edit_host, delete_host, host_exists
+from ...database import (
+    list_hosts,
+    get_host,
+    create_host,
+    edit_host,
+    delete_host,
+    host_exists,
+)
 
 router = APIRouter(prefix="/api", tags=["Hosts"])
 
@@ -28,12 +35,12 @@ class EditBody(BaseModel):
 
 def _row_to_dict(row) -> dict:
     return {
-        "address":     row["address"],
-        "name":        row["name"],
-        "port":        row["port"],
+        "address": row["address"],
+        "name": row["name"],
+        "port": row["port"],
         "api_address": row["api_address"],
-        "api_secret":  row["api_secret"],
-        "active":      bool(row["active"]),
+        "api_secret": row["api_secret"],
+        "active": bool(row["active"]),
     }
 
 

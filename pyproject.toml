@@ -34,3 +34,30 @@ dependencies = [
   "typer>=0.24.1",
   "qrcode>=8.0",
 ]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+respect-gitignore = true
+exclude = ["app/db/migrations"]
+fix = true
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"
+
+[tool.pyright]
+reportOptionalMemberAccess = false
+
+[dependency-groups]
+dev = [
+  "ruff>=0.11.6",
+]

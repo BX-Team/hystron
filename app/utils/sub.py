@@ -7,15 +7,13 @@ from fastapi.responses import PlainTextResponse
 
 from ..database import list_hosts, get_config
 
-_BUNDLED_TEMPLATES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates"
-)
+_BUNDLED_TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates")
 
 _TEMPLATE_CONFIG_KEY: dict[str, str] = {
     "singbox.json": "template_singbox",
-    "clash.yaml":   "template_clash",
-    "xray.json":    "template_xray",
-    "index.html":   "template_index",
+    "clash.yaml": "template_clash",
+    "xray.json": "template_xray",
+    "index.html": "template_index",
 }
 
 
@@ -53,12 +51,13 @@ def get_templates_search_dirs() -> list[str]:
     dirs.append(_BUNDLED_TEMPLATES_DIR)
     return dirs
 
+
 def make_links(uname: str, pwd: str) -> list[dict]:
     return [
         {
-            "uri":    f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
-            "label":  h["name"],
-            "host":   h["address"],
+            "uri": f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
+            "label": h["name"],
+            "host": h["address"],
         }
         for h in list_hosts(active_only=True)
     ]
@@ -84,7 +83,7 @@ def make_base_headers(
 ) -> tuple[str, dict]:
     profile_name_tpl = get_config("profile_name_tpl", "hysteria for {uname}")
     profile_name = profile_name_tpl.format(uname=uname)
-    title_b64    = base64.b64encode(profile_name.encode()).decode()
+    title_b64 = base64.b64encode(profile_name.encode()).decode()
     headers = {
         "profile-update-interval": "12",
         "subscription-userinfo": f"upload=0; download={day}; total={traffic_limit}; expire={expires_at}",
@@ -106,14 +105,16 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
     proxy_names = []
     for h in hosts:
         proxy_names.append(h["name"])
-        config["outbounds"].append({
-            "type": "hysteria2",
-            "tag":  h["name"],
-            "server": h["address"],
-            "server_port": h["port"],
-            "password": f"{uname}:{pwd}",
-            "tls": {"enabled": True, "server_name": h["address"]},
-        })
+        config["outbounds"].append(
+            {
+                "type": "hysteria2",
+                "tag": h["name"],
+                "server": h["address"],
+                "server_port": h["port"],
+                "password": f"{uname}:{pwd}",
+                "tls": {"enabled": True, "server_name": h["address"]},
+            }
+        )
     config["outbounds"][0]["outbounds"] = proxy_names
     return PlainTextResponse(
         json.dumps(config, indent=4, ensure_ascii=False),
@@ -150,28 +151,30 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     for h in hosts:
         tag = h["name"]
         proxy_tags.append(tag)
-        config["outbounds"].append({
-            "tag": tag,
-            "protocol": "hysteria",
-            "settings": {
-                "version": 2,
-                "address": h["address"],
-                "port": h["port"],
-            },
-            "streamSettings": {
-                "network": "hysteria",
-                "hysteriaSettings": {
+        config["outbounds"].append(
+            {
+                "tag": tag,
+                "protocol": "hysteria",
+                "settings": {
                     "version": 2,
-                    "auth": f"{uname}:{pwd}",
+                    "address": h["address"],
+                    "port": h["port"],
                 },
-                "security": "tls",
-                "tlsSettings": {
-                    "serverName": h["address"],
-                    "allowInsecure": True,
-                    "alpn": ["h3"],
+                "streamSettings": {
+                    "network": "hysteria",
+                    "hysteriaSettings": {
+                        "version": 2,
+                        "auth": f"{uname}:{pwd}",
+                    },
+                    "security": "tls",
+                    "tlsSettings": {
+                        "serverName": h["address"],
+                        "allowInsecure": True,
+                        "alpn": ["h3"],
+                    },
                 },
-            },
-        })
+            }
+        )
 
     config["remarks"] = ", ".join(proxy_tags) if proxy_tags else uname
 
@@ -185,8 +188,7 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
 def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
     body = "\n".join(
-        f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}"
-        for h in hosts
+        f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}" for h in hosts
     )
     return PlainTextResponse(
         base64.b64encode(body.encode()).decode(),
@@ -204,18 +206,22 @@ def build_browser_ctx(
     week: int,
     alltime: int,
 ) -> dict:
-    traffic_tiles = [
-        {"label": "hour",     "val": fmt_bytes(hour)},
-        {"label": "day",      "val": fmt_bytes(day)},
-        {"label": "week",     "val": fmt_bytes(week)},
-        {"label": "all-time", "val": fmt_bytes(alltime)},
-    ] if alltime or hour else []
+    traffic_tiles = (
+        [
+            {"label": "hour", "val": fmt_bytes(hour)},
+            {"label": "day", "val": fmt_bytes(day)},
+            {"label": "week", "val": fmt_bytes(week)},
+            {"label": "all-time", "val": fmt_bytes(alltime)},
+        ]
+        if alltime or hour
+        else []
+    )
 
     return {
-        "username":      uname,
-        "sub_url":       sub_url,
-        "links":         link_list,
+        "username": uname,
+        "sub_url": sub_url,
+        "links": link_list,
         "traffic_tiles": traffic_tiles,
-        "active":        active,
-        "support_url":   get_config("support_url", ""),
+        "active": active,
+        "support_url": get_config("support_url", ""),
     }

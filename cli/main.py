@@ -13,8 +13,8 @@ from rich.table import Table
 
 # ── constants ─────────────────────────────────────────────────────────────────
 CONTAINER_NAME = os.environ.get("HYSTRON_CONTAINER", "hystron")
-IMAGE_NAME      = os.environ.get("HYSTRON_IMAGE",     "ghcr.io/bx-team/hystron")
-INSTALL_DIR     = os.environ.get("HYSTRON_INSTALL_DIR", "/opt/hystron")
+IMAGE_NAME = os.environ.get("HYSTRON_IMAGE", "ghcr.io/bx-team/hystron")
+INSTALL_DIR = os.environ.get("HYSTRON_INSTALL_DIR", "/opt/hystron")
 
 API_URL = os.environ.get("HYSTRON_API", "http://127.0.0.1:9001").rstrip("/")
 
@@ -62,14 +62,12 @@ def _docker(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 def _compose_cmd() -> list[str] | None:
     """Return the available docker compose command as a list, or None."""
     try:
-        subprocess.run(["docker", "compose", "version"], check=True,
-                       capture_output=True)
+        subprocess.run(["docker", "compose", "version"], check=True, capture_output=True)
         return ["docker", "compose"]
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
     try:
-        subprocess.run(["docker-compose", "version"], check=True,
-                       capture_output=True)
+        subprocess.run(["docker-compose", "version"], check=True, capture_output=True)
         return ["docker-compose"]
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
@@ -113,7 +111,18 @@ def version():
 def tui():
     """Open the interactive terminal admin UI (runs inside the container)."""
     try:
-        os.execvp("docker", ["docker", "exec", "-it", CONTAINER_NAME, "/code/.venv/bin/python", "-m", "tui"])
+        os.execvp(
+            "docker",
+            [
+                "docker",
+                "exec",
+                "-it",
+                CONTAINER_NAME,
+                "/code/.venv/bin/python",
+                "-m",
+                "tui",
+            ],
+        )
     except FileNotFoundError:
         console.print("[red]docker not found.[/red] Make sure Docker is installed and in PATH.")
         raise typer.Exit(1)
@@ -124,10 +133,15 @@ def tui():
 def status():
     """Show Docker container status."""
     result = subprocess.run(
-        ["docker", "inspect", "--format",
-         "{{.Name}}\t{{.State.Status}}\t{{.State.StartedAt}}",
-         CONTAINER_NAME],
-        capture_output=True, text=True,
+        [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.Name}}\t{{.State.Status}}\t{{.State.StartedAt}}",
+            CONTAINER_NAME,
+        ],
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         console.print(f"[red]Container '{CONTAINER_NAME}' not found.[/red]")
@@ -135,8 +149,11 @@ def status():
     name, state, started = result.stdout.strip().split("\t")
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row("[bold]container[/bold]", name.lstrip("/"))
-    table.add_row("[bold]status[/bold]",    f"[green]{state}[/green]" if state == "running" else f"[red]{state}[/red]")
-    table.add_row("[bold]started[/bold]",   started)
+    table.add_row(
+        "[bold]status[/bold]",
+        f"[green]{state}[/green]" if state == "running" else f"[red]{state}[/red]",
+    )
+    table.add_row("[bold]started[/bold]", started)
     console.print(table)
 
 
@@ -159,8 +176,9 @@ def restart():
 # ── update ────────────────────────────────────────────────────────────────────
 @app.command()
 def update(
-    version: Optional[str] = typer.Option(None, "--version", "-v",
-                                           help="Image tag to pull (default: current or latest)"),
+    version: Optional[str] = typer.Option(
+        None, "--version", "-v", help="Image tag to pull (default: current or latest)"
+    ),
 ):
     """Update Hystron by running the remote install script with the 'update' flag."""
     cmd = (
@@ -177,8 +195,10 @@ def update(
 # Users sub-app
 # ─────────────────────────────────────────────────────────────────────────────
 users_app = typer.Typer(
-    help="Manage users.", add_completion=False,
-    rich_markup_mode="rich", no_args_is_help=True,
+    help="Manage users.",
+    add_completion=False,
+    rich_markup_mode="rich",
+    no_args_is_help=True,
 )
 app.add_typer(users_app, name="users")
 
@@ -190,7 +210,15 @@ def users_list():
     if not rows:
         console.print("No users found.")
         return
-    table = Table("username", "password", "active", "sid", "traffic_limit", "expires_at", "traffic_total")
+    table = Table(
+        "username",
+        "password",
+        "active",
+        "sid",
+        "traffic_limit",
+        "expires_at",
+        "traffic_total",
+    )
     for u in rows:
         table.add_row(
             u["username"],
@@ -211,11 +239,15 @@ def users_create(
     expires_at: int = typer.Option(0, "--expires-at", "-e", help="Expiry UNIX timestamp (0 = never)"),
 ):
     """Create a new user."""
-    result = _api("POST", "/api/users", json={
-        "username": username,
-        "traffic_limit": int(traffic_limit * 1024 ** 3),
-        "expires_at": expires_at,
-    })
+    result = _api(
+        "POST",
+        "/api/users",
+        json={
+            "username": username,
+            "traffic_limit": int(traffic_limit * 1024**3),
+            "expires_at": expires_at,
+        },
+    )
     console.print(f"[green]Created[/green]")
     console.print(f"  username : {result['username']}")
     console.print(f"  password : {result['password']}")
@@ -227,31 +259,39 @@ def users_info(username: str = typer.Argument(..., help="Username")):
     """Show details of a user."""
     row = _api("GET", f"/api/users/{username}")
     table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_row("username",      row["username"])
-    table.add_row("password",      row["password"])
-    table.add_row("sid",           row["sid"])
-    table.add_row("active",        "[green]yes[/green]" if row["active"] else "[red]no[/red]")
-    table.add_row("traffic_limit", _fmt_bytes(row["traffic_limit"]) if row["traffic_limit"] else "unlimited")
-    table.add_row("expires_at",    str(row["expires_at"]))
+    table.add_row("username", row["username"])
+    table.add_row("password", row["password"])
+    table.add_row("sid", row["sid"])
+    table.add_row("active", "[green]yes[/green]" if row["active"] else "[red]no[/red]")
+    table.add_row(
+        "traffic_limit",
+        _fmt_bytes(row["traffic_limit"]) if row["traffic_limit"] else "unlimited",
+    )
+    table.add_row("expires_at", str(row["expires_at"]))
     console.print(table)
 
 
 @users_app.command("edit")
 def users_edit(
     username: str = typer.Argument(..., help="Username to edit"),
-    password: Optional[str]  = typer.Option(None, "--password", "-p"),
-    sid:      Optional[str]  = typer.Option(None, "--sid",      "-s"),
-    active:   Optional[bool] = typer.Option(None, "--active",   "-a"),
+    password: Optional[str] = typer.Option(None, "--password", "-p"),
+    sid: Optional[str] = typer.Option(None, "--sid", "-s"),
+    active: Optional[bool] = typer.Option(None, "--active", "-a"),
     traffic_limit: Optional[float] = typer.Option(None, "--traffic-limit", "-t", help="Traffic limit in GB"),
-    expires_at:    Optional[int]   = typer.Option(None, "--expires-at",    "-e"),
+    expires_at: Optional[int] = typer.Option(None, "--expires-at", "-e"),
 ):
     """Edit an existing user."""
     body: dict[str, Any] = {}
-    if password      is not None: body["password"]      = password
-    if sid           is not None: body["sid"]           = sid
-    if active        is not None: body["active"]        = active
-    if traffic_limit is not None: body["traffic_limit"] = int(traffic_limit * 1024 ** 3)
-    if expires_at    is not None: body["expires_at"]    = expires_at
+    if password is not None:
+        body["password"] = password
+    if sid is not None:
+        body["sid"] = sid
+    if active is not None:
+        body["active"] = active
+    if traffic_limit is not None:
+        body["traffic_limit"] = int(traffic_limit * 1024**3)
+    if expires_at is not None:
+        body["expires_at"] = expires_at
     _api("PATCH", f"/api/users/{username}", json=body)
     console.print(f"[green]User '{username}' updated.[/green]")
 
@@ -272,8 +312,10 @@ def users_delete(
 # Traffic sub-app
 # ─────────────────────────────────────────────────────────────────────────────
 traffic_app = typer.Typer(
-    help="Show traffic statistics.", add_completion=False,
-    rich_markup_mode="rich", no_args_is_help=False,
+    help="Show traffic statistics.",
+    add_completion=False,
+    rich_markup_mode="rich",
+    no_args_is_help=False,
 )
 app.add_typer(traffic_app, name="traffic")
 
@@ -308,8 +350,10 @@ def traffic_list(
 # Hosts sub-app
 # ─────────────────────────────────────────────────────────────────────────────
 hosts_app = typer.Typer(
-    help="Manage Hysteria2 hosts.", add_completion=False,
-    rich_markup_mode="rich", no_args_is_help=True,
+    help="Manage Hysteria2 hosts.",
+    add_completion=False,
+    rich_markup_mode="rich",
+    no_args_is_help=True,
 )
 app.add_typer(hosts_app, name="hosts")
 
@@ -324,7 +368,9 @@ def hosts_list():
     table = Table("address", "name", "port", "active", "api_address")
     for h in rows:
         table.add_row(
-            h["address"], h["name"], str(h["port"]),
+            h["address"],
+            h["name"],
+            str(h["port"]),
             "[green]yes[/green]" if h["active"] else "[red]no[/red]",
             h["api_address"],
         )
@@ -333,22 +379,26 @@ def hosts_list():
 
 @hosts_app.command("create")
 def hosts_create(
-    address:    str = typer.Argument(..., help="Host address (domain or IP)"),
-    name:       str = typer.Option(..., "--name",       "-n", help="Display name"),
-    api_address:str = typer.Option(..., "--api-address","-a", help="Hysteria2 API address"),
+    address: str = typer.Argument(..., help="Host address (domain or IP)"),
+    name: str = typer.Option(..., "--name", "-n", help="Display name"),
+    api_address: str = typer.Option(..., "--api-address", "-a", help="Hysteria2 API address"),
     api_secret: str = typer.Option(..., "--api-secret", "-s", help="Hysteria2 API secret"),
-    port:       int = typer.Option(443, "--port",       "-p", help="Port"),
-    active:    bool = typer.Option(True,"--active",           help="Enable host"),
+    port: int = typer.Option(443, "--port", "-p", help="Port"),
+    active: bool = typer.Option(True, "--active", help="Enable host"),
 ):
     """Add a new Hysteria2 host."""
-    _api("POST", "/api/hosts", json={
-        "address":     address,
-        "name":        name,
-        "api_address": api_address,
-        "api_secret":  api_secret,
-        "port":        port,
-        "active":      active,
-    })
+    _api(
+        "POST",
+        "/api/hosts",
+        json={
+            "address": address,
+            "name": name,
+            "api_address": api_address,
+            "api_secret": api_secret,
+            "port": port,
+            "active": active,
+        },
+    )
     console.print(f"[green]Host '{address}' created.[/green]")
 
 
@@ -364,28 +414,33 @@ def hosts_info(address: str = typer.Argument(..., help="Host address")):
 
 @hosts_app.command("edit")
 def hosts_edit(
-    address:     str            = typer.Argument(..., help="Host address"),
-    name:        Optional[str]  = typer.Option(None, "--name",        "-n"),
-    port:        Optional[int]  = typer.Option(None, "--port",        "-p"),
-    api_address: Optional[str]  = typer.Option(None, "--api-address", "-a"),
-    api_secret:  Optional[str]  = typer.Option(None, "--api-secret",  "-s"),
-    active:      Optional[bool] = typer.Option(None, "--active"),
+    address: str = typer.Argument(..., help="Host address"),
+    name: Optional[str] = typer.Option(None, "--name", "-n"),
+    port: Optional[int] = typer.Option(None, "--port", "-p"),
+    api_address: Optional[str] = typer.Option(None, "--api-address", "-a"),
+    api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s"),
+    active: Optional[bool] = typer.Option(None, "--active"),
 ):
     """Edit an existing host."""
     body: dict[str, Any] = {}
-    if name        is not None: body["name"]        = name
-    if port        is not None: body["port"]        = port
-    if api_address is not None: body["api_address"] = api_address
-    if api_secret  is not None: body["api_secret"]  = api_secret
-    if active      is not None: body["active"]      = active
+    if name is not None:
+        body["name"] = name
+    if port is not None:
+        body["port"] = port
+    if api_address is not None:
+        body["api_address"] = api_address
+    if api_secret is not None:
+        body["api_secret"] = api_secret
+    if active is not None:
+        body["active"] = active
     _api("PATCH", f"/api/hosts/{address}", json=body)
     console.print(f"[green]Host '{address}' updated.[/green]")
 
 
 @hosts_app.command("delete")
 def hosts_delete(
-    address: str  = typer.Argument(..., help="Host address"),
-    yes:     bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+    address: str = typer.Argument(..., help="Host address"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     """Delete a host."""
     if not yes:
@@ -398,8 +453,10 @@ def hosts_delete(
 # Config sub-app
 # ─────────────────────────────────────────────────────────────────────────────
 config_app = typer.Typer(
-    help="Manage application configuration.", add_completion=False,
-    rich_markup_mode="rich", no_args_is_help=True,
+    help="Manage application configuration.",
+    add_completion=False,
+    rich_markup_mode="rich",
+    no_args_is_help=True,
 )
 app.add_typer(config_app, name="config")
 
@@ -426,7 +483,7 @@ def config_get(key: str = typer.Argument(..., help="Config key")):
 
 @config_app.command("set")
 def config_set(
-    key:   str       = typer.Argument(..., help="Config key"),
+    key: str = typer.Argument(..., help="Config key"),
     value: list[str] = typer.Argument(..., help="New value (words joined by spaces)"),
 ):
     """Set a config value."""
@@ -437,7 +494,7 @@ def config_set(
 
 @config_app.command("delete")
 def config_delete(
-    key: str  = typer.Argument(..., help="Config key"),
+    key: str = typer.Argument(..., help="Config key"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     """Delete a config key."""
@@ -450,4 +507,3 @@ def config_delete(
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app()
-

@@ -124,9 +124,9 @@ class UserQRModal(BaseModal):
             self.query_one("#qr-display").update("[red]User not found.[/red]")
             return
 
-        sid             = row["sid"]
-        sub_path        = get_config("subscription_path", "/sub")
-        base_url        = get_config("base_url", "").rstrip("/")
+        sid = row["sid"]
+        sub_path = get_config("subscription_path", "/sub")
+        base_url = get_config("base_url", "").rstrip("/")
         if not base_url:
             url = f"(set base_url in config){sub_path}/{sid}"
             self.query_one("#qr-display").update(
@@ -142,7 +142,9 @@ class UserQRModal(BaseModal):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         await self.key_escape()
 
+
 # ── modals: users ─────────────────────────────────────────────────────────────
+
 
 class UserCreateModal(BaseModal):
     """Create a new user."""
@@ -156,7 +158,10 @@ class UserCreateModal(BaseModal):
             yield Static("Create user", classes="modal-title")
             with Vertical(classes="input-container"):
                 yield Input(placeholder="Username", id="username")
-                yield Input(placeholder="Traffic limit GB     (0 = unlimited)", id="traffic_limit")
+                yield Input(
+                    placeholder="Traffic limit GB     (0 = unlimited)",
+                    id="traffic_limit",
+                )
                 yield Input(placeholder="Expires at unix ts   (0 = never)", id="expires_at")
             with Horizontal(classes="button-row"):
                 yield Button("Create", id="create", variant="success")
@@ -178,10 +183,14 @@ class UserCreateModal(BaseModal):
             tl_raw = self.query_one("#traffic_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
             try:
-                traffic_limit = int(float(tl_raw) * 1024 ** 3) if tl_raw else 0
+                traffic_limit = int(float(tl_raw) * 1024**3) if tl_raw else 0
                 expires_at = int(ea_raw) if ea_raw else 0
             except ValueError:
-                self.notify("Traffic limit must be a number (GB) and expires must be an integer", severity="error", title="Error")
+                self.notify(
+                    "Traffic limit must be a number (GB) and expires must be an integer",
+                    severity="error",
+                    title="Error",
+                )
                 return
             result = create_user(username, traffic_limit=traffic_limit, expires_at=expires_at)
             if result is None:
@@ -208,7 +217,11 @@ class UserEditModal(BaseModal):
         with Container(classes="modal-box"):
             yield Static(f"Edit user '{self.username}'", classes="modal-title")
             with Vertical(classes="input-container"):
-                yield Input(placeholder="New password       (empty = keep)", id="password", password=True)
+                yield Input(
+                    placeholder="New password       (empty = keep)",
+                    id="password",
+                    password=True,
+                )
                 yield Input(placeholder="New SID            (empty = keep)", id="sid")
                 yield Input(placeholder="Traffic limit GB    (empty = keep)", id="traffic_limit")
                 yield Input(placeholder="Expires at unix ts  (empty = keep)", id="expires_at")
@@ -237,10 +250,14 @@ class UserEditModal(BaseModal):
             tl_raw = self.query_one("#traffic_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
             try:
-                traffic_limit = int(float(tl_raw) * 1024 ** 3) if tl_raw else None
+                traffic_limit = int(float(tl_raw) * 1024**3) if tl_raw else None
                 expires_at = int(ea_raw) if ea_raw else None
             except ValueError:
-                self.notify("Traffic limit must be a number (GB) and expires must be an integer", severity="error", title="Error")
+                self.notify(
+                    "Traffic limit must be a number (GB) and expires must be an integer",
+                    severity="error",
+                    title="Error",
+                )
                 return
             edit_user(
                 self.username,
@@ -301,7 +318,10 @@ class HostCreateModal(BaseModal):
                 yield Input(placeholder="Address      (e.g. vpn.example.com)", id="address")
                 yield Input(placeholder="Name         (display label)", id="name")
                 yield Input(placeholder="Port         (default 443)", id="port")
-                yield Input(placeholder="API address  (e.g. http://127.0.0.1:25413)", id="api_address")
+                yield Input(
+                    placeholder="API address  (e.g. http://127.0.0.1:25413)",
+                    id="api_address",
+                )
                 yield Input(placeholder="API secret", id="api_secret")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
@@ -565,7 +585,15 @@ class UsersContent(Static):
             self.table.add_columns("  (no users — press 'c' to create one)  ")
             return
 
-        columns = ["#", "Username", "Active", "Traffic Limit", "Expires At", "Total Traffic", "SID"]
+        columns = [
+            "#",
+            "Username",
+            "Active",
+            "Traffic Limit",
+            "Expires At",
+            "Total Traffic",
+            "SID",
+        ]
         data = [
             [
                 str(idx),
@@ -581,7 +609,10 @@ class UsersContent(Static):
         col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
         self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
         for row, orig in zip(data, rows):
-            self.table.add_row(*[_center(cell, col_widths[i]) for i, cell in enumerate(row)], key=orig["username"])
+            self.table.add_row(
+                *[_center(cell, col_widths[i]) for i, cell in enumerate(row)],
+                key=orig["username"],
+            )
 
     # ── selection helper ──────────────────────────────────────────────────────
 
@@ -623,6 +654,7 @@ class UsersContent(Static):
             return
         self.app.push_screen(UserQRModal(username))
 
+
 class TrafficContent(Static):
     """Traffic tab — read-only per-user usage overview."""
 
@@ -661,7 +693,10 @@ class TrafficContent(Static):
         col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
         self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
         for row, orig in zip(data, rows):
-            self.table.add_row(*[_center(cell, col_widths[i]) for i, cell in enumerate(row)], key=orig["username"])
+            self.table.add_row(
+                *[_center(cell, col_widths[i]) for i, cell in enumerate(row)],
+                key=orig["username"],
+            )
 
 
 class HostsContent(Static):
@@ -704,7 +739,10 @@ class HostsContent(Static):
         col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
         self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
         for row, orig in zip(data, rows):
-            self.table.add_row(*[_center(cell, col_widths[i]) for i, cell in enumerate(row)], key=orig["address"])
+            self.table.add_row(
+                *[_center(cell, col_widths[i]) for i, cell in enumerate(row)],
+                key=orig["address"],
+            )
 
     @property
     def _selected_address(self) -> str | None:

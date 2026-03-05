@@ -4,7 +4,14 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ...database import get_user, list_users_with_traffic, create_user, edit_user, delete_user, user_exists
+from ...database import (
+    get_user,
+    list_users_with_traffic,
+    create_user,
+    edit_user,
+    delete_user,
+    user_exists,
+)
 
 router = APIRouter(prefix="/api", tags=["Users"])
 
@@ -12,7 +19,7 @@ router = APIRouter(prefix="/api", tags=["Users"])
 class CreateBody(BaseModel):
     username: str
     traffic_limit: int = 0  # 0 = unlimited
-    expires_at: int = 0     # 0 = never
+    expires_at: int = 0  # 0 = never
 
 
 class EditBody(BaseModel):
@@ -25,21 +32,18 @@ class EditBody(BaseModel):
 
 def _row_to_dict(row) -> dict:
     return {
-        "username":      row["username"],
-        "password":      row["password"],
-        "sid":           row["sid"],
-        "active":        bool(row["active"]),
+        "username": row["username"],
+        "password": row["password"],
+        "sid": row["sid"],
+        "active": bool(row["active"]),
         "traffic_limit": row["traffic_limit"],
-        "expires_at":    row["expires_at"],
+        "expires_at": row["expires_at"],
     }
 
 
 @router.get("/users")
 def users_list():
-    return [
-        {**_row_to_dict(r), "traffic_total": r["total"]}
-        for r in list_users_with_traffic()
-    ]
+    return [{**_row_to_dict(r), "traffic_total": r["total"]} for r in list_users_with_traffic()]
 
 
 @router.post("/users", status_code=201)
