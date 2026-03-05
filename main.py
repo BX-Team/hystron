@@ -2,7 +2,7 @@ import asyncio
 
 import uvicorn
 
-from app.database import create_user, init_db, user_exists
+from app.database import init_db
 
 init_db()
 
@@ -28,11 +28,6 @@ async def _run() -> None:
 
 
 if __name__ == "__main__":
-    if not user_exists("admin"):
-        result = create_user("admin")
-        if result:
-            print(f"[init] created default user  admin / {result['password']}")
-
     try:
         asyncio.run(_run())
     except KeyboardInterrupt:

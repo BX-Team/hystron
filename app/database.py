@@ -1,8 +1,8 @@
 import os
+import secrets
 import sqlite3
 import time
 import uuid
-import secrets
 
 _DB_PATH = os.environ.get("HYST_DB_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "app.db"))
 
@@ -190,6 +190,7 @@ def delete_user(username: str) -> bool:
     conn = get_db()
     cur = conn.cursor()
     cur.execute("DELETE FROM users WHERE username = ?", (username,))
+    cur.execute("DELETE FROM traffic WHERE username = ?", (username,))
     conn.commit()
     conn.close()
     return True
