@@ -66,6 +66,7 @@ def init_db():
         # Template overrides: directory and per-format paths.
         # Per-format paths take precedence over templates_dir.
         # If empty, falls back to templates_dir/<filename>, then bundled template.
+        "announce":          "",
         "templates_dir":     "/var/lib/hystron/templates",
         "template_singbox":  "",
         "template_clash":    "",

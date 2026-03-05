@@ -172,18 +172,6 @@
       <span class="chevron" id="appsChevron">▾</span>
     </div>
     <div class="apps-list" id="appsList">
-
-      <div class="app-row" id="app-v2raytun">
-        <div class="app-left">
-          <span class="app-name">v2RayTun</span>
-          <div class="app-badges">
-            <span class="badge" data-platform="android">Android</span>
-            <span class="badge" data-platform="ios">iOS</span>
-          </div>
-        </div>
-        <a class="install-btn" href="v2raytun://import/{{ sub_url | urlencode }}" data-i18n="install">install</a>
-      </div>
-
       <div class="app-row" id="app-happ">
         <div class="app-left">
           <span class="app-name">Happ</span>
@@ -197,7 +185,7 @@
 
       <div class="app-row" id="app-clash">
         <div class="app-left">
-          <span class="app-name">Clash Mihomo</span>
+          <span class="app-name">Clash Meta</span>
           <div class="app-badges">
             <span class="badge" data-platform="android">Android</span>
             <span class="badge" data-platform="windows">Windows</span>
@@ -327,8 +315,8 @@
       else if (/macintosh|mac os/.test(ua)) platform = 'macos';
 
       var platformApps = {
-        android: ['app-v2raytun', 'app-happ', 'app-clash'],
-        ios:     ['app-v2raytun', 'app-happ'],
+        android: ['app-happ', 'app-clash'],
+        ios:     ['app-happ'],
         windows: ['app-clash'],
         macos:   ['app-clash'],
       };

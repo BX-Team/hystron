@@ -73,18 +73,31 @@ def fmt_bytes(n: int) -> str:
     return f"{n:.1f} PB"
 
 
-def make_base_headers(uname: str, day: int, alltime: int, base_url: str, subscription_path: str, sid: str) -> tuple[str, dict]:
+def make_base_headers(
+    uname: str,
+    day: int,
+    alltime: int,
+    base_url: str,
+    subscription_path: str,
+    sid: str,
+    traffic_limit: int = 0,
+    expires_at: int = 0,
+) -> tuple[str, dict]:
     profile_name_tpl = get_config("profile_name_tpl", "hysteria for {uname}")
     profile_name = profile_name_tpl.format(uname=uname)
     title_b64    = base64.b64encode(profile_name.encode()).decode()
     headers = {
         "profile-update-interval": "12",
-        "subscription-userinfo": f"upload=0; download={day}; total={alltime}; expire=0",
+        "subscription-userinfo": f"upload=0; download={day}; total={traffic_limit}; expire={expires_at}",
         "content-disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(profile_name)}",
         "profile-web-page-url": f"{base_url}{subscription_path}/{sid}",
         "profile-title": f"base64:{title_b64}",
         "support-url": get_config("support_url", ""),
     }
+    announce_text = get_config("announce", "")
+    if announce_text:
+        announce_text = announce_text[:200]
+        headers["announce"] = "base64:" + base64.b64encode(announce_text.encode()).decode()
     return title_b64, headers
 
 
@@ -160,6 +173,8 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
                 },
             },
         })
+
+    config["remarks"] = ", ".join(proxy_tags) if proxy_tags else uname
 
     return PlainTextResponse(
         json.dumps(config, indent=2, ensure_ascii=False),

@@ -1,25 +1,18 @@
+allow-lan: true
 mode: rule
 log-level: info
 
-tun:
-  enable: true
-  stack: mixed
-  dns-hijack:
-    - "any:53"
-  auto-route: true
-  auto-detect-interface: true
-  strict-route: true
-
 dns:
   enable: true
+  use-hosts: true
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
   default-nameserver:
     - 1.1.1.1
     - 8.8.8.8
   nameserver:
-    - https://1.1.1.1/dns-query
-    - https://8.8.8.8/dns-query
+    - 1.1.1.1
+    - 8.8.8.8
   fake-ip-filter:
     - '*.lan'
     - stun.*.*.*
@@ -29,7 +22,6 @@ dns:
     - pool.ntp.org
     - '*.msftconnecttest.com'
     - '*.msftncsi.com'
-  ipv6: false
 
 proxies:
 {proxies}

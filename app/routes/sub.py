@@ -68,7 +68,8 @@ async def subscription(sid: str, request: Request):
 
     if not is_browser:
         print(f"\nsub: {uname} | {ua} | {request.client.host}\n")
-        _, base_headers = make_base_headers(uname, day, alltime, base_url, SUBSCRIPTION_PATH, sid)
+        _, base_headers = make_base_headers(uname, day, alltime, base_url, SUBSCRIPTION_PATH, sid,
+                                              user["traffic_limit"], user["expires_at"])
 
         if _RE_SINGBOX.search(ua):
             return build_singbox(uname, pwd, base_headers)
