@@ -82,6 +82,8 @@ def make_base_headers(uname: str, day: int, alltime: int, base_url: str, subscri
         "subscription-userinfo": f"upload=0; download={day}; total={alltime}; expire=0",
         "content-disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(profile_name)}",
         "profile-web-page-url": f"{base_url}{subscription_path}/{sid}",
+        "profile-title": f"base64:{title_b64}",
+        "support-url": get_config("support_url", ""),
     }
     return title_b64, headers
 
@@ -166,7 +168,7 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     )
 
 
-def build_plain(uname: str, pwd: str, title_b64: str, base_headers: dict) -> PlainTextResponse:
+def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
     body = "\n".join(
         f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}"
@@ -174,11 +176,7 @@ def build_plain(uname: str, pwd: str, title_b64: str, base_headers: dict) -> Pla
     )
     return PlainTextResponse(
         base64.b64encode(body.encode()).decode(),
-        headers={
-            **base_headers,
-            "profile-title": f"base64:{title_b64}",
-            "support-url": get_config("support_url", "https://discord.gg/qNyybSSPm5"),
-        },
+        headers=base_headers,
     )
 
 

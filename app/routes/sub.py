@@ -28,10 +28,15 @@ _BROWSER_KW = ("Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "Teleg
 _RE_SINGBOX = re.compile(r"^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*[Ss]ing[\-b]?ox.*")
 _RE_CLASH   = re.compile(r"^([Cc]lash[\-\.]?[Vv]erge|[Cc]lash[\-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)")
 _RE_XRAY    = re.compile(r"^([Vv]2rayNG|[Vv]2rayN|[Ss]treisand|[Hh]app|[Kk]tor\-client)")
+_RE_PLAIN   = re.compile(r".*")
 
 
 def _get_base_url(request: Request) -> str:
-    return f"{request.url.scheme}://{request.url.netloc}"
+    cfg = get_config("base_url", "").rstrip("/")
+    if cfg:
+        return cfg
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return f"{proto}://{request.url.netloc}"
 
 
 @router.head(f"{SUBSCRIPTION_PATH}/{{sid}}")
@@ -63,7 +68,7 @@ async def subscription(sid: str, request: Request):
 
     if not is_browser:
         print(f"\nsub: {uname} | {ua} | {request.client.host}\n")
-        title_b64, base_headers = make_base_headers(uname, day, alltime, base_url, SUBSCRIPTION_PATH, sid)
+        _, base_headers = make_base_headers(uname, day, alltime, base_url, SUBSCRIPTION_PATH, sid)
 
         if _RE_SINGBOX.search(ua):
             return build_singbox(uname, pwd, base_headers)
@@ -71,7 +76,8 @@ async def subscription(sid: str, request: Request):
             return build_clash(uname, pwd, base_headers)
         if _RE_XRAY.search(ua):
             return build_xray(uname, pwd, base_headers)
-        return build_plain(uname, pwd, title_b64, base_headers)
+        if _RE_PLAIN.search(ua):
+            return build_plain(uname, pwd, base_headers)
 
     print(f"\nbrowser: {uname} | {request.client.host}\n")
 
