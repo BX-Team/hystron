@@ -1,11 +1,11 @@
-import os
 import base64
-import urllib.parse
 import json
+import os
+import urllib.parse
 
 from fastapi.responses import PlainTextResponse
 
-from ..database import list_hosts, get_config
+from app.database import get_config, list_hosts
 
 _BUNDLED_TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates")
 
@@ -67,7 +67,7 @@ def fmt_bytes(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
             return f"{n:.1f} {unit}"
-        n /= 1024
+        n /= 1024  # type: ignore
     return f"{n:.1f} PB"
 
 

@@ -4,13 +4,13 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ...database import (
-    list_hosts,
-    get_host,
+from app.database import (
     create_host,
-    edit_host,
     delete_host,
+    edit_host,
+    get_host,
     host_exists,
+    list_hosts,
 )
 
 router = APIRouter(prefix="/api", tags=["Hosts"])

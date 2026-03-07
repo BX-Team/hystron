@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ...database import get_config, set_config, list_config, delete_config
+from app.database import delete_config, get_config, list_config, set_config
 
 router = APIRouter(prefix="/api", tags=["Config"])
 

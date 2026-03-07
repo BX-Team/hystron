@@ -6,16 +6,16 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
-from ..database import get_config, get_db, get_traffic, list_hosts
-from ..utils.sub import (
-    build_xray,
-    make_links,
-    make_base_headers,
-    build_singbox,
+from app.database import get_config, get_db, get_traffic, list_hosts
+from app.utils.sub import (
+    build_browser_ctx,
     build_clash,
     build_plain,
-    build_browser_ctx,
+    build_singbox,
+    build_xray,
     get_templates_search_dirs,
+    make_base_headers,
+    make_links,
 )
 
 router = APIRouter(tags=["Subscription"])

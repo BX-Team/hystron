@@ -7,8 +7,8 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .polling import poll_hysteria
-from .routes import auth, sub
-from .routes.api import users, traffic, hosts, config
+from .routes.internal import config, hosts, traffic, users
+from .routes.public import auth, sub
 
 
 @asynccontextmanager

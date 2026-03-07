@@ -4,12 +4,12 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ...database import (
+from app.database import (
+    create_user,
+    delete_user,
+    edit_user,
     get_user,
     list_users_with_traffic,
-    create_user,
-    edit_user,
-    delete_user,
     user_exists,
 )
 

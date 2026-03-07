@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ...database import get_traffic, user_exists
+from app.database import get_traffic, user_exists
 
 router = APIRouter(prefix="/api", tags=["Traffic"])
 
