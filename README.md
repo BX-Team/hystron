@@ -1,7 +1,7 @@
 <div align="center">
 
 # Hystron
-Simple CLI, TUI and API management panel for [Hysteria2](https://v2.hysteria.network) proxy servers 
+Simple CLI, TUI and API management panel for [Hysteria2](https://v2.hysteria.network) proxy servers
 
 [![Chat on Discord](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/social/discord-plural_vector.svg)](https://discord.gg/qNyybSSPm5)
 [![github](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/github_vector.svg)](https://github.com/BX-Team/hystron)
@@ -23,13 +23,13 @@ Follow the interactive prompts. Once the installation is complete, you will see 
 
 ```
   === Installation complete ===
-  Public  (auth/sub) → http://YOUR_SERVER:9000"
-  Internal (API)     → http://127.0.0.1:9001"
-  Data dir           → /var/lib/hystron"
-  Templates override → /var/lib/hystron/templates"
+  Public  (auth/sub) → http://YOUR_SERVER:9000
+  Internal (API)     → http://127.0.0.1:9001
+  Data dir           → /var/lib/hystron
+  Templates override → /var/lib/hystron/templates
 
-  Manage: hystron --help"
-  Logs:   docker logs -f hystron"
+  Manage: hystron --help
+  Logs:   docker logs -f hystron
 ```
 
 You can edit Hystron via CLI commands or using TUI. Choose whatever you like!
