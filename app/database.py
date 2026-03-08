@@ -23,7 +23,25 @@ def init_db():
             sid           TEXT    UNIQUE NOT NULL,
             active        INTEGER NOT NULL DEFAULT 1,
             traffic_limit INTEGER NOT NULL DEFAULT 0,
-            expires_at    INTEGER NOT NULL DEFAULT 0
+            expires_at    INTEGER NOT NULL DEFAULT 0,
+            device_limit  INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    # Migration: add device_limit to existing databases
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN device_limit INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS devices (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            username     TEXT    NOT NULL,
+            hwid         TEXT    NOT NULL,
+            device_os    TEXT    NOT NULL,
+            ver_os       TEXT    NOT NULL,
+            device_model TEXT    NOT NULL,
+            app_version  TEXT    NOT NULL
         )
     """)
     cur.execute("""
@@ -57,16 +75,17 @@ def init_db():
     defaults = {
         "profile_name_tpl": "Hystron for {uname}",
         "poll_interval": "600",
+        "base_url": "",
+        "support_url": "https://discord.gg/qNyybSSPm5",
+        "announce": "",
+        "announce-url": "",
+        "subscription_path": "/sub",
         "whitelist_enable": "false",
         "whitelist": "",
         "forbidden_domains": "",
-        "subscription_path": "/sub",
-        "support_url": "https://discord.gg/qNyybSSPm5",
-        "base_url": "",
         # Template overrides: directory and per-format paths.
         # Per-format paths take precedence over templates_dir.
         # If empty, falls back to templates_dir/<filename>, then bundled template.
-        "announce": "",
         "templates_dir": "/var/lib/hystron/templates",
         "template_singbox": "",
         "template_clash": "",
@@ -114,8 +133,9 @@ def list_users_with_traffic() -> list[dict]:
     cur = conn.cursor()
     cur.execute("""
         SELECT u.username, u.password, u.sid, u.active,
-               u.traffic_limit, u.expires_at,
-               COALESCE(SUM(t.tx + t.rx), 0) AS total
+               u.traffic_limit, u.expires_at, u.device_limit,
+               COALESCE(SUM(t.tx + t.rx), 0) AS total,
+               (SELECT COUNT(*) FROM devices d WHERE d.username = u.username) AS device_count
         FROM users u
         LEFT JOIN traffic t ON t.username = u.username
         GROUP BY u.username
@@ -131,6 +151,7 @@ def create_user(
     *,
     traffic_limit: int = 0,
     expires_at: int = 0,
+    device_limit: int = 0,
 ) -> dict | None:
     if user_exists(username):
         return None
@@ -139,8 +160,8 @@ def create_user(
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO users (username, password, sid, traffic_limit, expires_at) VALUES (?, ?, ?, ?, ?)",
-        (username, password, sid, traffic_limit, expires_at),
+        "INSERT INTO users (username, password, sid, traffic_limit, expires_at, device_limit) VALUES (?, ?, ?, ?, ?, ?)",
+        (username, password, sid, traffic_limit, expires_at, device_limit),
     )
     conn.commit()
     conn.close()
@@ -150,6 +171,7 @@ def create_user(
         "sid": sid,
         "traffic_limit": traffic_limit,
         "expires_at": expires_at,
+        "device_limit": device_limit,
     }
 
 
@@ -161,6 +183,7 @@ def edit_user(
     active: bool | None = None,
     traffic_limit: int | None = None,
     expires_at: int | None = None,
+    device_limit: int | None = None,
 ) -> bool:
     if not user_exists(username):
         return False
@@ -179,6 +202,8 @@ def edit_user(
         )
     if expires_at is not None:
         cur.execute("UPDATE users SET expires_at = ? WHERE username = ?", (expires_at, username))
+    if device_limit is not None:
+        cur.execute("UPDATE users SET device_limit = ? WHERE username = ?", (device_limit, username))
     conn.commit()
     conn.close()
     return True
@@ -191,6 +216,7 @@ def delete_user(username: str) -> bool:
     cur = conn.cursor()
     cur.execute("DELETE FROM users WHERE username = ?", (username,))
     cur.execute("DELETE FROM traffic WHERE username = ?", (username,))
+    cur.execute("DELETE FROM devices WHERE username = ?", (username,))
     conn.commit()
     conn.close()
     return True
@@ -231,6 +257,94 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
         return False, "overlimit"
 
     return True, ""
+
+# ── devices ───────────────────────────────────────────────────────────────────
+
+
+def list_devices(username: str | None = None) -> list[dict]:
+    conn = get_db()
+    cur = conn.cursor()
+    if username:
+        cur.execute("SELECT * FROM devices WHERE username = ? ORDER BY id", (username,))
+    else:
+        cur.execute("SELECT * FROM devices ORDER BY username, id")
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def register_device(
+    username: str,
+    hwid: str,
+    device_os: str,
+    ver_os: str,
+    device_model: str,
+    app_version: str,
+) -> bool:
+    """
+    Register or update a device for a user.
+    Returns False if the user's device_limit is reached and this is a new device.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM devices WHERE username = ? AND hwid = ?", (username, hwid))
+    existing = cur.fetchone()
+
+    if existing:
+        cur.execute(
+            "UPDATE devices SET device_os=?, ver_os=?, device_model=?, app_version=? WHERE id=?",
+            (device_os, ver_os, device_model, app_version, existing["id"]),
+        )
+        conn.commit()
+        conn.close()
+        return True
+
+    # New device — check limit
+    cur.execute("SELECT device_limit FROM users WHERE username = ?", (username,))
+    user_row = cur.fetchone()
+    if user_row and user_row["device_limit"] > 0:
+        cur.execute("SELECT COUNT(*) AS cnt FROM devices WHERE username = ?", (username,))
+        cnt = cur.fetchone()["cnt"]
+        if cnt >= user_row["device_limit"]:
+            conn.close()
+            return False
+
+    cur.execute(
+        "INSERT INTO devices (username, hwid, device_os, ver_os, device_model, app_version) VALUES (?, ?, ?, ?, ?, ?)",
+        (username, hwid, device_os, ver_os, device_model, app_version),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_device(device_id: int) -> bool:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM devices WHERE id = ?", (device_id,))
+    count = cur.rowcount
+    conn.commit()
+    conn.close()
+    return count > 0
+
+
+def is_device_allowed(username: str, hwid: str) -> bool:
+    """
+    Returns True if the user has no device_limit set, or the HWID is already registered.
+    Returns False if device_limit is set and the HWID is not yet registered.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT device_limit FROM users WHERE username = ?", (username,))
+    user_row = cur.fetchone()
+    if not user_row or not user_row["device_limit"]:
+        conn.close()
+        return True
+    cur.execute("SELECT 1 FROM devices WHERE username = ? AND hwid = ?", (username, hwid))
+    exists = cur.fetchone() is not None
+    conn.close()
+    return exists
 
 
 # ── traffic ───────────────────────────────────────────────────────────────────

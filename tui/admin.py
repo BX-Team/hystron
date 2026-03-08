@@ -29,6 +29,7 @@ from app.database import (
     create_host,
     create_user,
     delete_config,
+    delete_device,
     delete_host,
     delete_user,
     edit_host,
@@ -38,6 +39,7 @@ from app.database import (
     get_traffic,
     get_user,
     list_config,
+    list_devices,
     list_hosts,
     list_users_with_traffic,
     set_config,
@@ -142,6 +144,84 @@ class UserQRModal(BaseModal):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         await self.key_escape()
 
+# ── modal: user devices ───────────────────────────────────────────────────────
+
+
+class UserDevicesModal(BaseModal):
+    """Show and manage registered devices for a user."""
+
+    BINDINGS = [
+        Binding("d", "delete_device", "Delete"),
+        Binding("r", "refresh", "Refresh"),
+    ]
+
+    def __init__(self, username: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.username = username
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box-devices"):
+            yield Static(f"Devices — {self.username}", classes="modal-title")
+            yield DataTable(id="devices-table", classes="devices-table")
+            with Horizontal(classes="button-row"):
+                yield Button("Delete", id="delete", variant="error")
+                yield Button("Close", id="close", variant="primary")
+
+    async def on_mount(self) -> None:
+        self.table = self.query_one("#devices-table", DataTable)
+        self.table.cursor_type = "row"
+        await self.action_refresh()
+        self.set_focus(self.table)
+
+    async def action_refresh(self) -> None:
+        self.table.clear(columns=True)
+        devices = list_devices(self.username)
+        if not devices:
+            self.table.add_columns("  (no devices registered)  ")
+            return
+        columns = ["#", "HWID", "OS", "Ver OS", "Model", "App Version"]
+        data = [
+            [
+                str(idx),
+                d["hwid"],
+                d["device_os"],
+                d["ver_os"],
+                d["device_model"],
+                d["app_version"],
+            ]
+            for idx, d in enumerate(devices, 1)
+        ]
+        col_widths = [max(len(columns[i]), max(len(row[i]) for row in data)) for i in range(len(columns))]
+        self.table.add_columns(*[_center(c, col_widths[i]) for i, c in enumerate(columns)])
+        for row, orig in zip(data, devices):
+            self.table.add_row(
+                *[_center(cell, col_widths[i]) for i, cell in enumerate(row)],
+                key=str(orig["id"]),
+            )
+
+    @property
+    def _selected_device_id(self) -> int | None:
+        try:
+            key = self.table.coordinate_to_cell_key(Coordinate(self.table.cursor_row, 0)).row_key.value
+            return int(key) if key is not None else None
+        except Exception:
+            return None
+
+    async def action_delete_device(self) -> None:
+        device_id = self._selected_device_id
+        if device_id is None:
+            return
+        delete_device(device_id)
+        self.notify("Device removed", severity="success", title="Deleted")
+        self.on_close()
+        await self.action_refresh()
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "delete":
+            await self.action_delete_device()
+        elif event.button.id == "close":
+            await self.key_escape()
 
 # ── modals: users ─────────────────────────────────────────────────────────────
 
@@ -162,6 +242,10 @@ class UserCreateModal(BaseModal):
                     placeholder="Traffic limit GB     (0 = unlimited)",
                     id="traffic_limit",
                 )
+                yield Input(
+                    placeholder="Device limit         (0 = unlimited)",
+                    id="device_limit",
+                )
                 yield Input(placeholder="Expires at unix ts   (0 = never)", id="expires_at")
             with Horizontal(classes="button-row"):
                 yield Button("Create", id="create", variant="success")
@@ -181,18 +265,22 @@ class UserCreateModal(BaseModal):
                 self.notify("Username is required", severity="error", title="Error")
                 return
             tl_raw = self.query_one("#traffic_limit").value.strip()
+            dl_raw = self.query_one("#device_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
             try:
                 traffic_limit = int(float(tl_raw) * 1024**3) if tl_raw else 0
+                device_limit = int(dl_raw) if dl_raw else 0
                 expires_at = int(ea_raw) if ea_raw else 0
             except ValueError:
                 self.notify(
-                    "Traffic limit must be a number (GB) and expires must be an integer",
+                    "Traffic limit must be a number (GB), device limit and expires must be integers",
                     severity="error",
                     title="Error",
                 )
                 return
-            result = create_user(username, traffic_limit=traffic_limit, expires_at=expires_at)
+            result = create_user(
+                username, traffic_limit=traffic_limit, expires_at=expires_at, device_limit=device_limit
+            )
             if result is None:
                 self.notify(f"User '{username}' already exists", severity="error", title="Error")
                 return
@@ -224,6 +312,7 @@ class UserEditModal(BaseModal):
                 )
                 yield Input(placeholder="New SID            (empty = keep)", id="sid")
                 yield Input(placeholder="Traffic limit GB    (empty = keep)", id="traffic_limit")
+                yield Input(placeholder="Device limit        (empty = keep)", id="device_limit")
                 yield Input(placeholder="Expires at unix ts  (empty = keep)", id="expires_at")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
@@ -248,13 +337,15 @@ class UserEditModal(BaseModal):
             sid = self.query_one("#sid").value.strip() or None
             active = self.query_one("#active").value
             tl_raw = self.query_one("#traffic_limit").value.strip()
+            dl_raw = self.query_one("#device_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
             try:
                 traffic_limit = int(float(tl_raw) * 1024**3) if tl_raw else None
+                device_limit = int(dl_raw) if dl_raw else None
                 expires_at = int(ea_raw) if ea_raw else None
             except ValueError:
                 self.notify(
-                    "Traffic limit must be a number (GB) and expires must be an integer",
+                    "Traffic limit must be a number (GB), device limit and expires must be integers",
                     severity="error",
                     title="Error",
                 )
@@ -266,6 +357,7 @@ class UserEditModal(BaseModal):
                 active=active,
                 traffic_limit=traffic_limit,
                 expires_at=expires_at,
+                device_limit=device_limit,
             )
             self.notify(f"User '{self.username}' updated", severity="success", title="Success")
             self.on_close()
@@ -565,6 +657,7 @@ class UsersContent(Static):
         Binding("e", "edit_user", "Edit"),
         Binding("d", "delete_user", "Delete"),
         Binding("q", "show_qr", "QR code"),
+        Binding("v", "show_devices", "Devices"),
         Binding("r", "refresh", "Refresh"),
     ]
 
@@ -590,6 +683,7 @@ class UsersContent(Static):
             "Username",
             "Active",
             "Traffic Limit",
+            "Devices",
             "Expires At",
             "Total Traffic",
             "SID",
@@ -600,6 +694,9 @@ class UsersContent(Static):
                 r["username"],
                 "\u2714" if r["active"] else "\u2716",
                 fmt_bytes(r["traffic_limit"]) if r["traffic_limit"] else "unlimited",
+                f"{r.get('device_count', 0)}/{r['device_limit']}"
+                if r["device_limit"]
+                else f"{r.get('device_count', 0)}/\u221e",
                 _fmt_ts(r["expires_at"]),
                 fmt_bytes(r["total"]),
                 r["sid"],
@@ -653,6 +750,12 @@ class UsersContent(Static):
         if not username:
             return
         self.app.push_screen(UserQRModal(username))
+
+    async def action_show_devices(self) -> None:
+        username = self._selected_username
+        if not username:
+            return
+        self.app.push_screen(UserDevicesModal(username, self._refresh_table))
 
 
 class TrafficContent(Static):
@@ -945,6 +1048,18 @@ BaseModal > Container {
 
 .button-row Button {
     margin: 0 1;
+}
+
+.modal-box-devices {
+    background: $panel;
+    border: round $primary;
+    padding: 1 2;
+    width: 100;
+    height: 22;
+}
+
+.devices-table {
+    height: 1fr;
 }
 """
 

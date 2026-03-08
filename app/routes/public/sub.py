@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
-from app.database import get_config, get_db, get_traffic, list_hosts
+from app.database import get_config, get_db, get_traffic, list_hosts, register_device
 from app.utils.sub import (
     build_browser_ctx,
     build_clash,
@@ -106,6 +106,18 @@ async def subscription(sid: str, request: Request):
 
     if not is_browser:
         print(f"\nsub: {uname} | {ua} | {request.client.host}\n")
+
+        hwid = request.headers.get("x-hwid", "").strip()
+        if hwid:
+            register_device(
+                uname,
+                hwid,
+                request.headers.get("x-device-os", ""),
+                request.headers.get("x-ver-os", ""),
+                request.headers.get("x-device-model", ""),
+                request.headers.get("x-app-version", ""),
+            )
+
         _, base_headers = make_base_headers(
             uname,
             day,

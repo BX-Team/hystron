@@ -212,6 +212,7 @@ def users_list():
         "active",
         "sid",
         "traffic_limit",
+        "device_limit",
         "expires_at",
         "traffic_total",
     )
@@ -222,6 +223,7 @@ def users_list():
             "[green]yes[/green]" if u["active"] else "[red]no[/red]",
             u["sid"],
             _fmt_bytes(u["traffic_limit"]) if u["traffic_limit"] else "unlimited",
+            str(u["device_limit"]) if u["device_limit"] else "unlimited",
             str(u["expires_at"]),
             _fmt_bytes(u.get("traffic_total", 0)),
         )
@@ -233,6 +235,7 @@ def users_create(
     username: str = typer.Argument(..., help="New username"),
     traffic_limit: float = typer.Option(0.0, "--traffic-limit", "-t", help="Traffic limit in GB (0 = unlimited)"),
     expires_at: int = typer.Option(0, "--expires-at", "-e", help="Expiry UNIX timestamp (0 = never)"),
+    device_limit: int = typer.Option(0, "--device-limit", "-d", help="Max number of devices (0 = unlimited)"),
 ):
     """Create a new user."""
     result = _api(
@@ -242,12 +245,14 @@ def users_create(
             "username": username,
             "traffic_limit": int(traffic_limit * 1024**3),
             "expires_at": expires_at,
+            "device_limit": device_limit,
         },
     )
     console.print("[green]Created[/green]")
-    console.print(f"  username : {result['username']}")
-    console.print(f"  password : {result['password']}")
-    console.print(f"  sid      : {result['sid']}")
+    console.print(f"  username     : {result['username']}")
+    console.print(f"  password     : {result['password']}")
+    console.print(f"  sid          : {result['sid']}")
+    console.print(f"  device_limit : {result['device_limit'] or 'unlimited'}")
 
 
 @users_app.command("info")
@@ -263,6 +268,10 @@ def users_info(username: str = typer.Argument(..., help="Username")):
         "traffic_limit",
         _fmt_bytes(row["traffic_limit"]) if row["traffic_limit"] else "unlimited",
     )
+    table.add_row(
+        "device_limit",
+        str(row["device_limit"]) if row["device_limit"] else "unlimited",
+    )
     table.add_row("expires_at", str(row["expires_at"]))
     console.print(table)
 
@@ -275,6 +284,9 @@ def users_edit(
     active: Optional[bool] = typer.Option(None, "--active", "-a"),
     traffic_limit: Optional[float] = typer.Option(None, "--traffic-limit", "-t", help="Traffic limit in GB"),
     expires_at: Optional[int] = typer.Option(None, "--expires-at", "-e"),
+    device_limit: Optional[int] = typer.Option(
+        None, "--device-limit", "-d", help="Max number of devices (0 = unlimited)"
+    ),
 ):
     """Edit an existing user."""
     body: dict[str, Any] = {}
@@ -288,6 +300,8 @@ def users_edit(
         body["traffic_limit"] = int(traffic_limit * 1024**3)
     if expires_at is not None:
         body["expires_at"] = expires_at
+    if device_limit is not None:
+        body["device_limit"] = device_limit
     _api("PATCH", f"/api/users/{username}", json=body)
     console.print(f"[green]User '{username}' updated.[/green]")
 
@@ -302,6 +316,33 @@ def users_delete(
         typer.confirm(f"Delete user '{username}'?", abort=True)
     _api("DELETE", f"/api/users/{username}")
     console.print(f"[green]Deleted '{username}'.[/green]")
+
+
+@users_app.command("devices")
+def users_devices(
+    username: str = typer.Argument(..., help="Username"),
+    delete: Optional[int] = typer.Option(None, "--delete", help="Delete device by ID"),
+):
+    """List or delete registered devices for a user."""
+    if delete is not None:
+        _api("DELETE", f"/api/users/{username}/devices/{delete}")
+        console.print(f"[green]Device {delete} deleted.[/green]")
+        return
+    rows = _api("GET", f"/api/users/{username}/devices")
+    if not rows:
+        console.print("No devices registered.")
+        return
+    table = Table("id", "hwid", "os", "ver_os", "model", "app_version")
+    for d in rows:
+        table.add_row(
+            str(d["id"]),
+            d["hwid"],
+            d["device_os"],
+            d["ver_os"],
+            d["device_model"],
+            d["app_version"],
+        )
+    console.print(table)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

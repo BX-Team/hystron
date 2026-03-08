@@ -6,9 +6,11 @@ from pydantic import BaseModel
 
 from app.database import (
     create_user,
+    delete_device,
     delete_user,
     edit_user,
     get_user,
+    list_devices,
     list_users_with_traffic,
     user_exists,
 )
@@ -20,6 +22,7 @@ class CreateBody(BaseModel):
     username: str
     traffic_limit: int = 0  # 0 = unlimited
     expires_at: int = 0  # 0 = never
+    device_limit: int = 0  # 0 = unlimited
 
 
 class EditBody(BaseModel):
@@ -28,6 +31,7 @@ class EditBody(BaseModel):
     active: Optional[bool] = None
     traffic_limit: Optional[int] = None
     expires_at: Optional[int] = None
+    device_limit: Optional[int] = None
 
 
 def _row_to_dict(row) -> dict:
@@ -38,6 +42,7 @@ def _row_to_dict(row) -> dict:
         "active": bool(row["active"]),
         "traffic_limit": row["traffic_limit"],
         "expires_at": row["expires_at"],
+        "device_limit": row["device_limit"],
     }
 
 
@@ -51,7 +56,12 @@ def users_create(body: CreateBody):
     username = body.username.strip()
     if not username:
         return JSONResponse({"error": "username required"}, status_code=400)
-    result = create_user(username, traffic_limit=body.traffic_limit, expires_at=body.expires_at)
+    result = create_user(
+        username,
+        traffic_limit=body.traffic_limit,
+        expires_at=body.expires_at,
+        device_limit=body.device_limit,
+    )
     if result is None:
         return JSONResponse({"error": "already exists"}, status_code=409)
     return result
@@ -76,6 +86,7 @@ def users_edit(username: str, body: EditBody):
         active=body.active,
         traffic_limit=body.traffic_limit,
         expires_at=body.expires_at,
+        device_limit=body.device_limit,
     )
     return _row_to_dict(get_user(username))
 
@@ -83,5 +94,21 @@ def users_edit(username: str, body: EditBody):
 @router.delete("/users/{username}")
 def users_delete(username: str):
     if not delete_user(username):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return {"ok": True}
+
+
+@router.get("/users/{username}/devices")
+def users_devices_list(username: str):
+    if not user_exists(username):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return list_devices(username)
+
+
+@router.delete("/users/{username}/devices/{device_id}")
+def users_devices_delete(username: str, device_id: int):
+    if not user_exists(username):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not delete_device(device_id):
         return JSONResponse({"error": "not found"}, status_code=404)
     return {"ok": True}
