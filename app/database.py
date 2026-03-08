@@ -209,7 +209,8 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
     cur.execute(
         """
         SELECT u.active, u.traffic_limit, u.expires_at,
-               COALESCE(SUM(t.tx + t.rx), 0) AS total_traffic
+               COALESCE(SUM(CASE WHEN t.ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')
+                                 THEN t.tx + t.rx ELSE 0 END), 0) AS total_traffic
         FROM users u
         LEFT JOIN traffic t ON t.username = u.username
         WHERE u.username = ? AND u.password = ?
