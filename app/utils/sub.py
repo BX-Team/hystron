@@ -74,7 +74,6 @@ def fmt_bytes(n: int) -> str:
 def make_base_headers(
     uname: str,
     day: int,
-    alltime: int,
     base_url: str,
     subscription_path: str,
     sid: str,
@@ -96,6 +95,9 @@ def make_base_headers(
     if announce_text:
         announce_text = announce_text[:200]
         headers["announce"] = "base64:" + base64.b64encode(announce_text.encode()).decode()
+    announce_url = get_config("announce-url", "")
+    if announce_url:
+        headers["announce-url"] = announce_url
     return title_b64, headers
 
 

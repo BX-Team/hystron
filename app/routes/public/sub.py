@@ -121,13 +121,13 @@ async def subscription(sid: str, request: Request):
         _, base_headers = make_base_headers(
             uname,
             day,
-            alltime,
             base_url,
             SUBSCRIPTION_PATH,
             sid,
             user["traffic_limit"],
             user["expires_at"],
         )
+        print(base_headers)
 
         if _RE_SINGBOX.search(ua):
             return build_singbox(uname, pwd, base_headers)
