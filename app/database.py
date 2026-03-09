@@ -252,7 +252,7 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
         return False, "invalid"
     if not row["active"]:
         return False, "inactive"
-    if row["expires_at"] < int(time.time()):
+    if row["expires_at"] and row["expires_at"] < int(time.time()):
         return False, "expired"
     if row["traffic_limit"] > 0 and row["total_traffic"] >= row["traffic_limit"]:
         return False, "overlimit"
