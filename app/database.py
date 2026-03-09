@@ -10,6 +10,7 @@ _DB_PATH = os.environ.get("HYST_DB_PATH", os.path.join(os.path.dirname(os.path.d
 def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(_DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -251,9 +252,9 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
         return False, "invalid"
     if not row["active"]:
         return False, "inactive"
-    if row["expires_at"] and row["expires_at"] < int(time.time()):
+    if row["expires_at"] < int(time.time()):
         return False, "expired"
-    if row["traffic_limit"] and row["total_traffic"] >= row["traffic_limit"]:
+    if row["traffic_limit"] > 0 and row["total_traffic"] >= row["traffic_limit"]:
         return False, "overlimit"
 
     return True, ""
