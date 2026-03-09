@@ -109,7 +109,7 @@ async def subscription(sid: str, request: Request):
 
         hwid = request.headers.get("x-hwid", "").strip()
         if hwid:
-            register_device(
+            allowed = register_device(
                 uname,
                 hwid,
                 request.headers.get("x-device-os", ""),
@@ -117,6 +117,9 @@ async def subscription(sid: str, request: Request):
                 request.headers.get("x-device-model", ""),
                 request.headers.get("x-app-version", ""),
             )
+            if not allowed:
+                print(f"\nsub: {uname} → devicelimit ({request.client.host})\n")
+                return Response(status_code=403)
 
         _, base_headers = make_base_headers(
             uname,

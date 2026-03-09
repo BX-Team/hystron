@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from app.database import check_auth, get_config, is_device_allowed
+from app.database import check_auth, get_config
 
 router = APIRouter(tags=["Auth"])
 
@@ -30,11 +30,6 @@ async def auth(request: Request):
     print(f"\nauth: {username} → {status} ({request.client.host})\n")
 
     if not ok:
-        return JSONResponse({"ok": False})
-
-    hwid = request.headers.get("x-hwid", "").strip()
-    if hwid and not is_device_allowed(username, hwid):
-        print(f"\nauth: {username} → devicelimit ({request.client.host})\n")
         return JSONResponse({"ok": False})
 
     return JSONResponse({"ok": True, "id": username})
