@@ -130,7 +130,6 @@ async def subscription(sid: str, request: Request):
             user["traffic_limit"],
             user["expires_at"],
         )
-        print(base_headers)
 
         if _RE_SINGBOX.search(ua):
             return build_singbox(uname, pwd, base_headers)
