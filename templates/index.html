@@ -14,138 +14,163 @@
     html, body { overscroll-behavior: none; }
     body {
       font-family: 'JetBrains Mono', monospace;
-      background: rgb(10, 10, 10);
+      background: #0a0a0a;
       color: #dcdcdc;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 48px 16px 32px;
+      padding: 62px 18px 50px;
       min-height: 100vh;
     }
+
+    /* ── top bar ── */
     .topbar { position: fixed; top: 14px; right: 16px; z-index: 100; }
     .lang-btn {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 11px; font-weight: 600;
-      background: rgb(18, 18, 18);
-      border: 1px solid rgb(38, 38, 38);
-      border-radius: 6px;
-      color: #525252;
-      padding: 5px 10px;
-      cursor: pointer;
-      letter-spacing: 1px;
+      font-size: 12px; font-weight: 600;
+      background: #121212; border: 1px solid #262626;
+      border-radius: 6px; color: #525252;
+      padding: 6px 12px; cursor: pointer; letter-spacing: 1px;
       transition: border-color .15s, color .15s;
     }
-    .lang-btn:hover { border-color: rgb(64, 64, 64); color: #a3a3a3; }
-    .head { text-align: center; margin-bottom: 32px; }
-    .head h1 { font-size: 20px; font-weight: 600; color: #fff; letter-spacing: -0.5px; }
-    .head .sub { font-size: 13px; color: #525252; margin-top: 4px; }
-    .list { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 8px; }
+    .lang-btn:hover { border-color: #404040; color: #a3a3a3; }
+
+    /* ── container ── */
+    .container { width: 100%; max-width: 560px; }
+
+    /* ── profile header ── */
+    .profile {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+    .profile-name { font-size: 21px; font-weight: 600; color: #fff; }
+    .profile-hint { font-size: 12px; color: #383838; margin-top: 4px; }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(52,211,153,.07); border: 1px solid rgba(52,211,153,.18);
+      border-radius: 20px; padding: 7px 14px;
+      font-size: 11px; color: #34d399; letter-spacing: .5px;
+      white-space: nowrap;
+    }
+    .status-pill.inactive {
+      background: rgba(248,113,113,.07); border-color: rgba(248,113,113,.2);
+      color: #f87171;
+    }
+    .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+    /* ── section ── */
+    .section { margin-bottom: 24px; }
     .lbl {
-      font-size: 11px; color: #404040; text-transform: uppercase;
-      letter-spacing: 1px; margin-top: 20px; margin-bottom: 2px;
+      font-size: 11px; color: #383838; text-transform: uppercase;
+      letter-spacing: 1.2px; margin-bottom: 10px;
     }
-    .lbl:first-child { margin-top: 0; }
-    .lbl-row {
-      display: flex; align-items: center; justify-content: space-between;
-      cursor: pointer; user-select: none;
+
+    /* ── subscription card ── */
+    .sub-card {
+      background: #121212; border: 1px solid #262626;
+      border-radius: 12px; padding: 20px;
+      display: flex; gap: 20px; align-items: flex-start;
     }
-    .lbl-row:hover .lbl-text { color: #737373; }
-    .chevron { font-size: 10px; color: #404040; transition: transform .2s; }
-    .chevron.open { transform: rotate(180deg); }
-    .qr-tile {
-      background: rgb(18, 18, 18);
-      border: 1px solid rgb(38, 38, 38);
-      border-radius: 10px;
-      padding: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .sub-qr { flex-shrink: 0; }
+    .sub-right {
+      flex: 1; display: flex; flex-direction: column;
+      gap: 12px; justify-content: center; min-height: 144px;
     }
-    .row {
-      background: rgb(18, 18, 18);
-      border: 1px solid rgb(38, 38, 38);
-      border-radius: 10px;
-      padding: 14px 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
+    .copy-btn {
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+      background: #181818; border: 1px solid #2a2a2a;
+      border-radius: 8px; color: #737373;
+      padding: 12px 16px; cursor: pointer; text-align: left;
+      width: 100%; transition: border-color .15s, color .15s;
+    }
+    .copy-btn:hover { border-color: #404040; color: #a3a3a3; }
+    .sub-url-preview {
+      font-size: 10px; color: #2a2a2a;
+      word-break: break-all; line-height: 1.6; padding: 0 2px;
+    }
+
+    /* ── app cards ── */
+    .apps-list { display: flex; flex-direction: column; gap: 10px; }
+    .app-card {
+      background: #121212; border: 1px solid #262626;
+      border-radius: 12px; padding: 16px 18px;
+      display: flex; align-items: center; gap: 16px;
       transition: border-color .15s;
-      user-select: none;
     }
-    .row:hover { border-color: rgb(64, 64, 64); }
-    .row .name { font-size: 14px; color: #a3a3a3; }
-    .row .right { display: flex; align-items: center; gap: 10px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-    .dot.online  { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .5); }
-    .dot.offline { background: #f87171; box-shadow: 0 0 6px rgba(248, 113, 113, .5); }
-    .dot.unknown { background: #525252; }
-    .stat {
-      background: rgb(18, 18, 18);
-      border: 1px solid rgb(38, 38, 38);
-      border-radius: 10px;
-      padding: 14px 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .app-card:hover { border-color: #333; }
+    .app-icon {
+      width: 46px; height: 46px;
+      background: #181818; border: 1px solid #2a2a2a;
+      border-radius: 11px; display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0; font-size: 22px;
     }
-    .stat .name { font-size: 14px; color: #a3a3a3; }
-    .stat .stat-val { font-size: 13px; color: #525252; }
-    .footer { margin-top: 28px; font-size: 11px; color: #404040; text-align: center; line-height: 1.8; }
-    .footer a { color: #404040; text-decoration: none; }
-    .footer a:hover { color: #a3a3a3; }
-    .status-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      display: inline-block; vertical-align: middle; margin-right: 4px;
+    .app-info { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .app-name { font-size: 14px; color: #a3a3a3; font-weight: 500; }
+    .app-platforms { display: flex; gap: 5px; flex-wrap: wrap; }
+    .badge {
+      font-size: 10px; color: #404040; border: 1px solid #262626;
+      border-radius: 4px; padding: 2px 6px;
+      letter-spacing: .5px; text-transform: uppercase;
     }
-    .status-dot.active   { background: #34d399; }
-    .status-dot.inactive { background: #f87171; }
+    .badge.match { color: #34d399; border-color: rgba(52,211,153,.25); }
+    .app-actions { display: flex; flex-direction: column; gap: 7px; align-items: flex-end; flex-shrink: 0; }
+    .btn {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+      border-radius: 6px; padding: 6px 13px;
+      text-decoration: none; white-space: nowrap; display: inline-block; cursor: pointer;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .btn-green {
+      background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.2);
+      color: #34d399;
+    }
+    .btn-green:hover { background: rgba(52,211,153,.14); border-color: rgba(52,211,153,.35); }
+    .btn-dim { background: transparent; border: 1px solid #262626; color: #525252; }
+    .btn-dim:hover { border-color: #404040; color: #737373; }
+
+    /* ── proxy link rows ── */
+    .links-list { display: flex; flex-direction: column; gap: 8px; }
+    .link-row {
+      background: #121212; border: 1px solid #262626;
+      border-radius: 10px; padding: 15px 18px;
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; transition: border-color .15s; user-select: none;
+    }
+    .link-row:hover { border-color: #333; }
+    .link-name { font-size: 14px; color: #737373; }
+    .link-right { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot.online  { background: #34d399; box-shadow: 0 0 6px rgba(52,211,153,.5); }
+    .dot.offline { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,.5); }
+    .dot.unknown { background: #2a2a2a; }
+
+    /* ── traffic stats ── */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card {
+      background: #121212; border: 1px solid #262626;
+      border-radius: 10px; padding: 16px 18px;
+      display: flex; flex-direction: column; gap: 7px;
+    }
+    .stat-lbl { font-size: 11px; color: #383838; text-transform: uppercase; letter-spacing: .8px; }
+    .stat-val { font-size: 17px; color: #737373; font-weight: 500; }
+
+    /* ── footer ── */
+    .footer { margin-top: 4px; font-size: 12px; color: #363636; text-align: center; line-height: 2; }
+    .footer a { color: #363636; text-decoration: none; }
+    .footer a:hover { color: #737373; }
+
+    /* ── toast ── */
     .toast {
       position: fixed; bottom: 24px; left: 50%;
       transform: translateX(-50%) translateY(20px);
-      background: rgb(18, 18, 18); border: 1px solid rgb(38, 38, 38);
-      color: #a3a3a3; padding: 8px 20px; border-radius: 8px;
-      font-size: 12px; opacity: 0;
+      background: #121212; border: 1px solid #262626;
+      color: #a3a3a3; padding: 9px 22px; border-radius: 8px;
+      font-size: 13px; opacity: 0;
       transition: opacity .2s, transform .2s;
-      pointer-events: none; z-index: 99;
+      pointer-events: none; z-index: 99; white-space: nowrap;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .apps-list { display: none; flex-direction: column; gap: 8px; }
-    .apps-list.open { display: flex; }
-    .app-row {
-      background: rgb(18, 18, 18);
-      border: 1px solid rgb(38, 38, 38);
-      border-radius: 10px;
-      padding: 12px 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      transition: border-color .15s;
-    }
-    .app-row.recommended { border-color: rgb(52, 52, 52); }
-    .app-left { display: flex; flex-direction: column; gap: 5px; }
-    .app-name { font-size: 14px; color: #a3a3a3; }
-    .app-badges { display: flex; gap: 4px; flex-wrap: wrap; }
-    .badge {
-      font-size: 9px; color: #525252; border: 1px solid rgb(38, 38, 38);
-      border-radius: 4px; padding: 2px 6px; letter-spacing: 0.5px; text-transform: uppercase;
-    }
-    .badge.match { color: #34d399; border-color: rgba(52, 211, 153, .3); }
-    .rec-tag { font-size: 9px; color: #34d399; letter-spacing: 0.5px; text-transform: uppercase; }
-    .install-btn {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px; font-weight: 500;
-      background: transparent;
-      border: 1px solid rgb(38, 38, 38);
-      border-radius: 6px;
-      color: #737373;
-      padding: 6px 12px;
-      text-decoration: none;
-      transition: border-color .15s, color .15s;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .install-btn:hover { border-color: rgb(64, 64, 64); color: #a3a3a3; }
   </style>
 </head>
 <body>
@@ -153,79 +178,134 @@
     <button class="lang-btn" id="langBtn" onclick="toggleLang()">RU</button>
   </div>
 
-  <div class="head">
-    <h1 data-i18n="title">User Dashboard</h1>
-    <div class="sub" id="headSub">for {{ username }}</div>
-  </div>
+  <div class="container">
 
-  <div class="list">
+    <!-- profile -->
+    <div class="profile">
+      <div>
+        <div class="profile-name">{{ username }}</div>
+        <div class="profile-hint">hystron</div>
+      </div>
+      <div class="status-pill {{ '' if active else 'inactive' }}" id="statusPill">
+        <span class="pill-dot"></span>
+        <span id="statusText">{{ 'active' if active else 'inactive' }}</span>
+      </div>
+    </div>
 
     {% if sub_url %}
-    <div class="lbl" data-i18n="subscription">subscription</div>
-    <div class="qr-tile"><div id="qr"></div></div>
-    <div class="row" onclick="copyText('{{ sub_url }}')">
-      <span class="name" data-i18n="copyLink">copy subscription link</span>
+    <!-- subscription -->
+    <div class="section">
+      <div class="lbl" data-i18n="subscription">subscription</div>
+      <div class="sub-card">
+        <div class="sub-qr"><div id="qr"></div></div>
+        <div class="sub-right">
+          <button class="copy-btn" onclick="copyText('{{ sub_url }}')" data-i18n="copyLink">copy link</button>
+          <div class="sub-url-preview">{{ sub_url }}</div>
+        </div>
+      </div>
     </div>
 
-    <div class="lbl-row" onclick="toggleApps()" id="appsHeader" style="margin-top:20px;margin-bottom:2px;">
-      <span class="lbl lbl-text" style="margin:0;" data-i18n="apps">apps</span>
-      <span class="chevron" id="appsChevron">▾</span>
-    </div>
-    <div class="apps-list" id="appsList">
-      <div class="app-row" id="app-happ">
-        <div class="app-left">
-          <span class="app-name">Happ</span>
-          <div class="app-badges">
-            <span class="badge" data-platform="android">Android</span>
-            <span class="badge" data-platform="ios">iOS</span>
+    <!-- apps -->
+    <div class="section">
+      <div class="lbl" data-i18n="apps">apps</div>
+      <div class="apps-list">
+
+        <div class="app-card" id="app-happ">
+          <div class="app-icon">📱</div>
+          <div class="app-info">
+            <span class="app-name">Happ</span>
+            <div class="app-platforms">
+              <span class="badge" data-platform="ios">iOS</span>
+              <span class="badge" data-platform="android">Android</span>
+            </div>
+          </div>
+          <div class="app-actions">
+            <a class="btn btn-green" href="happ://add/{{ sub_url | urlencode }}" data-i18n="configure">configure</a>
+            <a class="btn btn-dim"
+               data-dl-ios="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973"
+               data-dl-android="https://play.google.com/store/apps/details?id=com.happproxy&amp;pcampaignid=web_share"
+               href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973"
+               target="_blank" rel="noreferrer" data-i18n="download">download</a>
           </div>
         </div>
-        <a class="install-btn" href="happ://add/{{ sub_url | urlencode }}" data-i18n="install">install</a>
-      </div>
 
-      <div class="app-row" id="app-clash">
-        <div class="app-left">
-          <span class="app-name">Clash Meta</span>
-          <div class="app-badges">
-            <span class="badge" data-platform="android">Android</span>
-            <span class="badge" data-platform="windows">Windows</span>
-            <span class="badge" data-platform="macos">macOS</span>
+        <div class="app-card" id="app-hiddify">
+          <div class="app-icon">🛡️</div>
+          <div class="app-info">
+            <span class="app-name">Hiddify</span>
+            <div class="app-platforms">
+              <span class="badge" data-platform="android">Android</span>
+              <span class="badge" data-platform="windows">Windows</span>
+            </div>
+          </div>
+          <div class="app-actions">
+            <a class="btn btn-green" href="hiddify://import/{{ sub_url | urlencode }}" data-i18n="configure">configure</a>
+            <a class="btn btn-dim"
+               data-dl-android="https://play.google.com/store/apps/details?id=app.hiddify.com&amp;pcampaignid=web_share"
+               data-dl-windows="https://github.com/hiddify/hiddify-app/releases/download/v4.1.1/Hiddify-Windows-Setup-x64.exe"
+               href="https://github.com/hiddify/hiddify-app/releases/download/v4.1.1/Hiddify-Windows-Setup-x64.exe"
+               target="_blank" rel="noreferrer" data-i18n="download">download</a>
           </div>
         </div>
-        <a class="install-btn" href="clash://install-config?url={{ (sub_url ~ '?fmt=clash') | urlencode }}" data-i18n="install">install</a>
-      </div>
 
+        <div class="app-card" id="app-clash-verge">
+          <div class="app-icon">⚡</div>
+          <div class="app-info">
+            <span class="app-name">Clash Verge Rev</span>
+            <div class="app-platforms">
+              <span class="badge" data-platform="windows">Windows</span>
+            </div>
+          </div>
+          <div class="app-actions">
+            <a class="btn btn-green" href="clash://install-config?url={{ (sub_url ~ '?fmt=clash') | urlencode }}" data-i18n="configure">configure</a>
+            <a class="btn btn-dim"
+               href="https://github.com/clash-verge-rev/clash-verge-rev/releases/download/v2.4.6/Clash.Verge_2.4.6_x64-setup.exe"
+               target="_blank" rel="noreferrer" data-i18n="download">download</a>
+          </div>
+        </div>
+
+      </div>
     </div>
     {% endif %}
 
     {% if links %}
-    <div class="lbl" data-i18n="links">links</div>
-    {% for l in links %}
-    <div class="row" onclick="copyText('{{ l.uri }}')">
-      <span class="name">{{ l.label }}</span>
-      <div class="right">
-        <div class="dot unknown" data-host="{{ l.host }}"></div>
+    <!-- proxy links -->
+    <div class="section">
+      <div class="lbl" data-i18n="links">links</div>
+      <div class="links-list">
+        {% for l in links %}
+        <div class="link-row" onclick="copyText('{{ l.uri }}')">
+          <span class="link-name">{{ l.label }}</span>
+          <div class="link-right">
+            <div class="dot unknown" data-host="{{ l.host }}"></div>
+          </div>
+        </div>
+        {% endfor %}
       </div>
     </div>
-    {% endfor %}
     {% endif %}
 
     {% if traffic_tiles %}
-    <div class="lbl" data-i18n="usage">usage</div>
-    {% for t in traffic_tiles %}
-    <div class="stat">
-      <span class="name">{{ t.label }}</span>
-      <span class="stat-val">{{ t.val }}</span>
+    <!-- traffic -->
+    <div class="section">
+      <div class="lbl" data-i18n="usage">usage</div>
+      <div class="stats-grid">
+        {% for t in traffic_tiles %}
+        <div class="stat-card">
+          <span class="stat-lbl">{{ t.label }}</span>
+          <span class="stat-val">{{ t.val }}</span>
+        </div>
+        {% endfor %}
+      </div>
     </div>
-    {% endfor %}
     {% endif %}
 
-  </div>
+    <!-- footer -->
+    <div class="footer" id="footer">
+      <span id="resetText">traffic resets at 00:00 UTC</span>
+      {% if support_url %} &bull; <a href="{{ support_url }}" target="_blank" rel="noreferrer" id="supportLink">support</a>{% endif %}
+    </div>
 
-  <div class="footer" id="footer">
-    <span class="status-dot {{ 'active' if active else 'inactive' }}"></span>
-    <span id="statusText">{{ 'subscription is active' if active else 'subscription is disabled' }}</span><br />
-    <span id="resetText">traffic resets at 00:00 UTC</span>{% if support_url %} &bull; <a href="{{ support_url }}" target="_blank" rel="noreferrer" id="supportLink">support</a>{% endif %}
   </div>
 
   <div class="toast" id="toast">copied</div>
@@ -235,36 +315,32 @@
 
     var T = {
       en: {
-        title: 'User dashboard',
-        for: 'for',
         subscription: 'subscription',
-        copyLink: 'copy subscription link',
+        copyLink: 'copy link',
         apps: 'apps',
+        configure: 'configure',
+        download: 'download',
         links: 'links',
         usage: 'usage',
-        install: 'install',
-        active: 'subscription is active',
-        inactive: 'subscription is disabled',
+        active: 'active',
+        inactive: 'inactive',
         reset: 'traffic resets at 00:00 UTC',
         support: 'support',
         copied: 'copied',
-        recommended: 'recommended',
       },
       ru: {
-        title: 'Личный кабинет',
-        for: 'для',
         subscription: 'подписка',
-        copyLink: 'скопировать ссылку на подписку',
+        copyLink: 'скопировать ссылку',
         apps: 'приложения',
+        configure: 'подключить',
+        download: 'скачать',
         links: 'ссылки',
         usage: 'трафик',
-        install: 'открыть',
-        active: 'подписка активна',
-        inactive: 'подписка отключена',
+        active: 'активна',
+        inactive: 'отключена',
         reset: 'трафик сбрасывается в 00:00 UTC',
         support: 'поддержка',
         copied: 'скопировано',
-        recommended: 'рекомендуется',
       },
     };
 
@@ -279,17 +355,11 @@
       });
       document.getElementById('langBtn').textContent = lang === 'en' ? 'RU' : 'EN';
       document.getElementById('toast').textContent = t.copied;
-      var headSub = document.getElementById('headSub');
-      if (headSub) headSub.textContent = t.for + ' {{ username }}';
-      var statusEl = document.getElementById('statusText');
-      if (statusEl) statusEl.textContent = IS_ACTIVE ? t.active : t.inactive;
+      document.getElementById('statusText').textContent = IS_ACTIVE ? t.active : t.inactive;
       var resetEl = document.getElementById('resetText');
       if (resetEl) resetEl.textContent = t.reset;
       var supportEl = document.getElementById('supportLink');
       if (supportEl) supportEl.textContent = t.support;
-      document.querySelectorAll('.rec-tag').forEach(function (el) {
-        el.textContent = t.recommended;
-      });
     }
 
     function toggleLang() {
@@ -298,14 +368,7 @@
       applyLang();
     }
 
-    var appsOpen = true;
-    function toggleApps() {
-      appsOpen = !appsOpen;
-      document.getElementById('appsList').classList.toggle('open', appsOpen);
-      document.getElementById('appsChevron').classList.toggle('open', appsOpen);
-    }
-
-    // Platform detection & recommendation
+    // Platform detection — highlight matching badges
     (function () {
       var ua = navigator.userAgent.toLowerCase();
       var platform = 'other';
@@ -314,35 +377,14 @@
       else if (/windows/.test(ua)) platform = 'windows';
       else if (/macintosh|mac os/.test(ua)) platform = 'macos';
 
-      var platformApps = {
-        android: ['app-happ', 'app-clash'],
-        ios:     ['app-happ'],
-        windows: ['app-clash'],
-        macos:   ['app-clash'],
-      };
-
-      var recommended = platformApps[platform] || [];
-      recommended.forEach(function (id) {
-        var row = document.getElementById(id);
-        if (!row) return;
-        row.classList.add('recommended');
-        row.querySelectorAll('.badge[data-platform="' + platform + '"]').forEach(function (b) {
-          b.classList.add('match');
-        });
-        var appLeft = row.querySelector('.app-left');
-        if (appLeft && !appLeft.querySelector('.rec-tag')) {
-          var tag = document.createElement('span');
-          tag.className = 'rec-tag';
-          tag.textContent = T[lang].recommended;
-          appLeft.appendChild(tag);
-        }
+      document.querySelectorAll('.badge[data-platform]').forEach(function (b) {
+        if (b.getAttribute('data-platform') === platform) b.classList.add('match');
       });
 
-      // Auto-open apps list
-      var list = document.getElementById('appsList');
-      if (list) list.classList.add('open');
-      var ch = document.getElementById('appsChevron');
-      if (ch) ch.classList.add('open');
+      // Set platform-specific download link where available
+      document.querySelectorAll('[data-dl-' + platform + ']').forEach(function (a) {
+        a.href = a.getAttribute('data-dl-' + platform);
+      });
     })();
 
     function copyText(text) {
@@ -377,10 +419,10 @@
       s.onload = function () {
         new QRCode(document.getElementById('qr'), {
           text: '{{ sub_url }}',
-          width: 200,
-          height: 200,
-          colorDark: '#a3a3a3',
-          colorLight: 'rgb(18,18,18)',
+          width: 150,
+          height: 150,
+          colorDark: '#737373',
+          colorLight: '#121212',
           correctLevel: QRCode.CorrectLevel.M,
         });
       };
