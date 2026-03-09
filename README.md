@@ -8,43 +8,33 @@ Simple CLI, TUI and API management panel for [Hysteria2](https://v2.hysteria.net
 </div>
 
 ## ⚙️ Features
-- We are thinking what to put here.
+- **User management** — traffic limits, expiry dates, device (HWID) limits
+- **Multi-server** — manage any number of Hysteria2 backends
+- **Smart subscriptions** — auto-detects client type (Sing-Box, Clash, Xray, plain) and serves the right format; browser gets an HTML dashboard with QR code
+- **Traffic monitoring** — polls servers periodically, tracks usage per user (hour / day / week / month / total), auto-kicks users who exceed their limit
+- **Device tracking** — devices register on first subscription fetch; auth blocks unregistered devices when the limit is set
+- **CLI, TUI and REST API** — manage everything from the terminal or programmatically
 
 ## 📥 Quick Install
 
-The install script handles everything: installs Docker and other things that I don't think you'll be interested in.
+```bash
+curl -fsSL https://raw.githubusercontent.com/BX-Team/hystron/master/install.sh | sudo bash -s install
+```
+
+After installation, get started by running:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BX-Team/hystron/refs/heads/master/install.sh -o /tmp/hystron.sh \
-  && sudo bash /tmp/hystron.sh install
+hystron --help
 ```
 
-Follow the interactive prompts. Once the installation is complete, you will see this message:
-
-```
-  === Installation complete ===
-  Public  (auth/sub) → http://YOUR_SERVER:9000
-  Internal (API)     → http://127.0.0.1:9001
-  Data dir           → /var/lib/hystron
-  Templates override → /var/lib/hystron/templates
-
-  Manage: hystron --help
-  Logs:   docker logs -f hystron
-```
-
-You can edit Hystron via CLI commands or using TUI. Choose whatever you like!
-
-To update later:
+## 🔧 Other Commands
 
 ```bash
+# Update
 hystron update
-```
 
-To uninstall:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/BX-Team/hystron/refs/heads/master/install.sh -o /tmp/hystron.sh \
-  && sudo bash /tmp/hystron.sh uninstall
+# Uninstall
+curl -fsSL https://raw.githubusercontent.com/BX-Team/hystron/master/install.sh | sudo bash -s uninstall
 ```
 
 ## ⚖️ License ![Static Badge](https://img.shields.io/badge/license-MIT-lightgreen)
