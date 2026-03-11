@@ -14,15 +14,16 @@ from app.database import (
     list_users_with_traffic,
     user_exists,
 )
+from app.events import emit
 
 router = APIRouter(prefix="/api", tags=["Users"])
 
 
 class CreateBody(BaseModel):
     username: str
-    traffic_limit: int = 0  # 0 = unlimited
-    expires_at: int = 0  # 0 = never
-    device_limit: int = 0  # 0 = unlimited
+    traffic_limit: int = 0
+    expires_at: int = 0
+    device_limit: int = 0
 
 
 class EditBody(BaseModel):
@@ -52,7 +53,7 @@ def users_list():
 
 
 @router.post("/users", status_code=201)
-def users_create(body: CreateBody):
+async def users_create(body: CreateBody):
     username = body.username.strip()
     if not username:
         return JSONResponse({"error": "username required"}, status_code=400)
@@ -64,6 +65,15 @@ def users_create(body: CreateBody):
     )
     if result is None:
         return JSONResponse({"error": "already exists"}, status_code=409)
+    await emit(
+        "user.created",
+        {
+            "username": username,
+            "traffic_limit": body.traffic_limit,
+            "expires_at": body.expires_at,
+            "device_limit": body.device_limit,
+        },
+    )
     return result
 
 
@@ -76,7 +86,7 @@ def users_get(username: str):
 
 
 @router.patch("/users/{username}")
-def users_edit(username: str, body: EditBody):
+async def users_edit(username: str, body: EditBody):
     if not user_exists(username):
         return JSONResponse({"error": "not found"}, status_code=404)
     edit_user(
@@ -88,13 +98,16 @@ def users_edit(username: str, body: EditBody):
         expires_at=body.expires_at,
         device_limit=body.device_limit,
     )
-    return _row_to_dict(get_user(username))
+    updated = _row_to_dict(get_user(username))
+    await emit("user.updated", updated)
+    return updated
 
 
 @router.delete("/users/{username}")
-def users_delete(username: str):
+async def users_delete(username: str):
     if not delete_user(username):
         return JSONResponse({"error": "not found"}, status_code=404)
+    await emit("user.deleted", {"username": username})
     return {"ok": True}
 
 

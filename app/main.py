@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .polling import poll_hysteria
 from .routes.internal import config, hosts, traffic, users
 from .routes.public import auth, sub
+from .ws.router import router as ws_router
 
 
 @asynccontextmanager
@@ -57,3 +58,4 @@ internal_app.include_router(users.router)
 internal_app.include_router(traffic.router)
 internal_app.include_router(hosts.router)
 internal_app.include_router(config.router)
+internal_app.include_router(ws_router)

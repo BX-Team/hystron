@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import httpx
 
 from .database import edit_user, get_config, get_db, get_traffic, get_user, list_hosts
+from .events import emit
 
 _last_reset_date = None
 
@@ -24,6 +25,7 @@ async def reset_daily_limits():
             conn.close()
             if count > 0:
                 print(f"Daily reset: reactivated {count} users at {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+                await emit("users.daily_reset", {"reactivated_count": count})
             _last_reset_date = current_date
         except Exception as e:
             print(f"Error during daily reset: {e}")
@@ -56,6 +58,14 @@ async def poll_hysteria():
                                         offenders.setdefault(auth, []).append(domain)
                             for user, domains in offenders.items():
                                 print(f"forbidden: {address} / {user}: {', '.join(sorted(set(domains)))}")
+                                await emit(
+                                    "user.forbidden_domain",
+                                    {
+                                        "server": address,
+                                        "username": user,
+                                        "domains": sorted(set(domains)),
+                                    },
+                                )
                     except Exception as e:
                         print(f"error streams {address}: {e}")
 
@@ -83,12 +93,19 @@ async def poll_hysteria():
                                     total = get_traffic(username)
                                     if total and total[0]["day"] >= user["traffic_limit"]:
                                         edit_user(username, active=False)
-                                        await client.post(f"{api_address}/kick", json={"id": username}, headers=headers)
-                                        print(f"kicked {username} on {address}: daily traffic limit exceeded")
+                                        await emit(
+                                            "user.traffic_exceeded",
+                                            {
+                                                "username": username,
+                                                "server": address,
+                                                "total_bytes": total[0]["day"],
+                                                "limit_bytes": user["traffic_limit"],
+                                            },
+                                        )
                             except Exception as e:
-                                print(f"error checking limit for {username} on {address}: {e}")
+                                print(f"error checking traffic for {username}: {e}")
                 except Exception as e:
-                    print(f"error traffic {address}: {e}")
+                    print(f"error polling {address}: {e}")
 
-            poll_interval = int(get_config("poll_interval", "600"))
-            await asyncio.sleep(poll_interval)
+            interval = int(get_config("poll_interval", "600"))
+            await asyncio.sleep(interval)
