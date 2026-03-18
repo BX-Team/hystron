@@ -50,7 +50,7 @@ RUN ARCH=$(uname -m) && \
         armv7l)  XRAY_ARCH="arm32-v7a" ;; \
         *)       XRAY_ARCH="64" ;; \
     esac && \
-    curl -fsSL "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-${XRAY_ARCH}.zip" \
+    curl -fsSL "https://files.bxteam.org/xray/Xray-linux-${XRAY_ARCH}.zip" \
         -o /tmp/xray.zip && \
     unzip /tmp/xray.zip xray -d /usr/local/bin && \
     chmod +x /usr/local/bin/xray && \
