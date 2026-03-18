@@ -1,6 +1,6 @@
 import re
+import time
 
-import httpx
 import jinja2
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
@@ -45,22 +45,13 @@ _BROWSER_KW = (
 
 
 @router.get("/hosts/status", include_in_schema=False)
-async def hosts_status():
-    """Return online/offline status for each active host (checked via their internal API)."""
-    hosts = list_hosts(active_only=True)
-    result = {}
-    async with httpx.AsyncClient(timeout=3) as client:
-        for h in hosts:
-            api_url = h["api_address"].rstrip("/")
-            try:
-                r = await client.get(
-                    f"{api_url}/traffic",
-                    headers={"Authorization": h["api_secret"]},
-                )
-                result[h["address"]] = "online" if r.status_code == 200 else "offline"
-            except Exception:
-                result[h["address"]] = "offline"
-    return result
+def hosts_status():
+    """Return online/offline status for each active host based on last node heartbeat."""
+    now = int(time.time())
+    return {
+        h["address"]: "online" if (h.get("last_seen", 0) or 0) > now - 60 else "offline"
+        for h in list_hosts(active_only=True)
+    }
 
 
 _RE_SINGBOX = re.compile(r"^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*[Ss]ing[\-b]?ox.*")

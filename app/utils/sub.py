@@ -52,15 +52,38 @@ def get_templates_search_dirs() -> list[str]:
     return dirs
 
 
+def _build_uri(proto: str, uname: str, pwd: str, host: str, port: int, label: str) -> str:
+    enc_label = urllib.parse.quote(label)
+    if proto == "hysteria2":
+        return f"hysteria2://{uname}:{pwd}@{host}:{port}/?sni={host}#{enc_label}"
+    if proto == "vless":
+        reality_sni = os.environ.get("REALITY_SNI", "www.microsoft.com")
+        return (
+            f"vless://{pwd}@{host}:{port}"
+            f"?encryption=none&flow=xtls-rprx-vision&security=reality"
+            f"&sni={reality_sni}&fp=chrome&type=tcp#{enc_label}"
+        )
+    if proto == "trojan":
+        return f"trojan://{pwd}@{host}:{port}?sni={host}#{enc_label}"
+    return ""
+
+
 def make_links(uname: str, pwd: str) -> list[dict]:
-    return [
-        {
-            "uri": f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
-            "label": h["name"],
-            "host": h["address"],
-        }
-        for h in list_hosts(active_only=True)
-    ]
+    links = []
+    for h in list_hosts(active_only=True):
+        protocols = h.get("protocols", '["hysteria2"]')
+        node_ports = h.get("node_ports", "{}")
+        if isinstance(protocols, str):
+            protocols = json.loads(protocols)
+        if isinstance(node_ports, str):
+            node_ports = json.loads(node_ports)
+        for proto in protocols:
+            port = node_ports.get(proto, h["port"])
+            label = f"{h['name']} ({proto})"
+            uri = _build_uri(proto, uname, pwd, h["address"], port, label)
+            if uri:
+                links.append({"uri": uri, "label": label, "host": h["address"], "proto": proto})
+    return links
 
 
 def fmt_bytes(n: int) -> str:
@@ -80,7 +103,7 @@ def make_base_headers(
     traffic_limit: int = 0,
     expires_at: int = 0,
 ) -> tuple[str, dict]:
-    profile_name_tpl = get_config("profile_name_tpl", "hysteria for {uname}")
+    profile_name_tpl = get_config("profile_name_tpl", "hystron for {uname}")
     profile_name = profile_name_tpl.format(uname=uname)
     title_b64 = base64.b64encode(profile_name.encode()).decode()
     headers = {
@@ -103,40 +126,87 @@ def make_base_headers(
 
 def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
-    config = json.load(open(get_template_file("singbox.json")))
+    cfg = json.load(open(get_template_file("singbox.json")))
     proxy_names = []
     for h in hosts:
-        proxy_names.append(h["name"])
-        config["outbounds"].append(
-            {
-                "type": "hysteria2",
-                "tag": h["name"],
-                "server": h["address"],
-                "server_port": h["port"],
-                "password": f"{uname}:{pwd}",
-                "tls": {"enabled": True, "server_name": h["address"]},
-            }
-        )
-    config["outbounds"][0]["outbounds"] = proxy_names
+        protocols = h.get("protocols", '["hysteria2"]')
+        node_ports = h.get("node_ports", "{}")
+        if isinstance(protocols, str):
+            protocols = json.loads(protocols)
+        if isinstance(node_ports, str):
+            node_ports = json.loads(node_ports)
+        for proto in protocols:
+            port = node_ports.get(proto, h["port"])
+            tag = f"{h['name']} ({proto})"
+            proxy_names.append(tag)
+            outbound = _singbox_outbound(proto, uname, pwd, h["address"], port, tag)
+            if outbound:
+                cfg["outbounds"].append(outbound)
+    cfg["outbounds"][0]["outbounds"] = proxy_names
     return PlainTextResponse(
-        json.dumps(config, indent=4, ensure_ascii=False),
+        json.dumps(cfg, indent=4, ensure_ascii=False),
         media_type="application/json",
         headers=base_headers,
     )
 
 
+def _singbox_outbound(proto: str, uname: str, pwd: str, host: str, port: int, tag: str) -> dict | None:
+    if proto == "hysteria2":
+        return {
+            "type": "hysteria2",
+            "tag": tag,
+            "server": host,
+            "server_port": port,
+            "password": f"{uname}:{pwd}",
+            "tls": {"enabled": True, "server_name": host},
+        }
+    if proto == "vless":
+        reality_sni = os.environ.get("REALITY_SNI", "www.microsoft.com")
+        return {
+            "type": "vless",
+            "tag": tag,
+            "server": host,
+            "server_port": port,
+            "uuid": pwd,
+            "flow": "xtls-rprx-vision",
+            "tls": {
+                "enabled": True,
+                "server_name": reality_sni,
+                "utls": {"enabled": True, "fingerprint": "chrome"},
+                "reality": {"enabled": True},
+            },
+        }
+    if proto == "trojan":
+        return {
+            "type": "trojan",
+            "tag": tag,
+            "server": host,
+            "server_port": port,
+            "password": pwd,
+            "tls": {"enabled": True, "server_name": host},
+        }
+    return None
+
+
 def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
-    proxies_yaml = "".join(
-        f"  - name: {h['name']}\n"
-        f"    type: hysteria2\n"
-        f"    server: {h['address']}\n"
-        f"    port: {h['port']}\n"
-        f"    password: {uname}:{pwd}\n"
-        f"    skip-cert-verify: true\n"
-        for h in hosts
-    )
-    proxy_names_yaml = "\n      - ".join(h["name"] for h in hosts)
+    proxy_lines = []
+    proxy_names = []
+    for h in hosts:
+        protocols = h.get("protocols", '["hysteria2"]')
+        node_ports = h.get("node_ports", "{}")
+        if isinstance(protocols, str):
+            protocols = json.loads(protocols)
+        if isinstance(node_ports, str):
+            node_ports = json.loads(node_ports)
+        for proto in protocols:
+            port = node_ports.get(proto, h["port"])
+            name = f"{h['name']} ({proto})"
+            proxy_names.append(name)
+            proxy_lines.append(_clash_proxy(proto, name, uname, pwd, h["address"], port))
+
+    proxies_yaml = "".join(p for p in proxy_lines if p)
+    proxy_names_yaml = "\n      - ".join(proxy_names)
     template = open(get_template_file("clash.yaml")).read()
     return PlainTextResponse(
         template.format(proxy_names_yaml, proxies=proxies_yaml.rstrip("\n")),
@@ -145,53 +215,134 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     )
 
 
+def _clash_proxy(proto: str, name: str, uname: str, pwd: str, host: str, port: int) -> str:
+    if proto == "hysteria2":
+        return (
+            f"  - name: {name}\n"
+            f"    type: hysteria2\n"
+            f"    server: {host}\n"
+            f"    port: {port}\n"
+            f"    password: {uname}:{pwd}\n"
+            f"    skip-cert-verify: true\n"
+        )
+    if proto == "vless":
+        reality_sni = os.environ.get("REALITY_SNI", "www.microsoft.com")
+        return (
+            f"  - name: {name}\n"
+            f"    type: vless\n"
+            f"    server: {host}\n"
+            f"    port: {port}\n"
+            f"    uuid: {pwd}\n"
+            f"    flow: xtls-rprx-vision\n"
+            f"    network: tcp\n"
+            f"    tls: true\n"
+            f"    servername: {reality_sni}\n"
+            f"    reality-opts:\n"
+            f"      public-key: ''\n"
+            f"    client-fingerprint: chrome\n"
+        )
+    if proto == "trojan":
+        return (
+            f"  - name: {name}\n"
+            f"    type: trojan\n"
+            f"    server: {host}\n"
+            f"    port: {port}\n"
+            f"    password: {pwd}\n"
+            f"    sni: {host}\n"
+            f"    skip-cert-verify: true\n"
+        )
+    return ""
+
+
 def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
-    config = json.load(open(get_template_file("xray.json")))
-
+    cfg = json.load(open(get_template_file("xray.json")))
     proxy_tags: list[str] = []
     for h in hosts:
-        tag = h["name"]
-        proxy_tags.append(tag)
-        config["outbounds"].append(
-            {
-                "tag": tag,
-                "protocol": "hysteria",
-                "settings": {
-                    "version": 2,
-                    "address": h["address"],
-                    "port": h["port"],
-                },
-                "streamSettings": {
-                    "network": "hysteria",
-                    "hysteriaSettings": {
-                        "version": 2,
-                        "auth": f"{uname}:{pwd}",
-                    },
-                    "security": "tls",
-                    "tlsSettings": {
-                        "serverName": h["address"],
-                        "allowInsecure": True,
-                        "alpn": ["h3"],
-                    },
-                },
-            }
-        )
-
-    config["remarks"] = ", ".join(proxy_tags) if proxy_tags else uname
-
+        protocols = h.get("protocols", '["hysteria2"]')
+        node_ports = h.get("node_ports", "{}")
+        if isinstance(protocols, str):
+            protocols = json.loads(protocols)
+        if isinstance(node_ports, str):
+            node_ports = json.loads(node_ports)
+        for proto in protocols:
+            port = node_ports.get(proto, h["port"])
+            tag = f"{h['name']} ({proto})"
+            proxy_tags.append(tag)
+            outbound = _xray_outbound(proto, uname, pwd, h["address"], port, tag)
+            if outbound:
+                cfg["outbounds"].append(outbound)
+    cfg["remarks"] = ", ".join(proxy_tags) if proxy_tags else uname
     return PlainTextResponse(
-        json.dumps(config, indent=2, ensure_ascii=False),
+        json.dumps(cfg, indent=2, ensure_ascii=False),
         media_type="application/json",
         headers=base_headers,
     )
 
 
+def _xray_outbound(proto: str, uname: str, pwd: str, host: str, port: int, tag: str) -> dict | None:
+    if proto == "hysteria2":
+        return {
+            "tag": tag,
+            "protocol": "hysteria",
+            "settings": {
+                "version": 2,
+                "address": host,
+                "port": port,
+            },
+            "streamSettings": {
+                "network": "hysteria",
+                "hysteriaSettings": {"version": 2, "auth": f"{uname}:{pwd}"},
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": host,
+                    "allowInsecure": True,
+                    "alpn": ["h3"],
+                },
+            },
+        }
+    if proto == "vless":
+        reality_sni = os.environ.get("REALITY_SNI", "www.microsoft.com")
+        return {
+            "tag": tag,
+            "protocol": "vless",
+            "settings": {
+                "vnext": [
+                    {
+                        "address": host,
+                        "port": port,
+                        "users": [{"id": pwd, "encryption": "none", "flow": "xtls-rprx-vision"}],
+                    }
+                ]
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "serverName": reality_sni,
+                    "fingerprint": "chrome",
+                },
+            },
+        }
+    if proto == "trojan":
+        return {
+            "tag": tag,
+            "protocol": "trojan",
+            "settings": {
+                "servers": [{"address": host, "port": port, "password": pwd}]
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "tls",
+                "tlsSettings": {"serverName": host, "allowInsecure": True},
+            },
+        }
+    return None
+
+
 def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
-    hosts = list_hosts(active_only=True)
-    body = "\n".join(
-        f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}" for h in hosts
-    )
+    links = make_links(uname, pwd)
+    body = "\n".join(lnk["uri"] for lnk in links)
     return PlainTextResponse(
         base64.b64encode(body.encode()).decode(),
         headers=base_headers,

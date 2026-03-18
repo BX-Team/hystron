@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import secrets
 import sqlite3
@@ -59,14 +61,30 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS traffic_user ON traffic (username)")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS hosts (
-            address     TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            port        INTEGER NOT NULL DEFAULT 443,
-            api_address TEXT NOT NULL,
-            api_secret  TEXT NOT NULL,
-            active      INTEGER NOT NULL DEFAULT 1
+            address        TEXT    PRIMARY KEY,
+            name           TEXT    NOT NULL,
+            port           INTEGER NOT NULL DEFAULT 443,
+            node_token     TEXT,
+            protocols      TEXT    NOT NULL DEFAULT '["hysteria2"]',
+            node_ports     TEXT    NOT NULL DEFAULT '{}',
+            last_seen      INTEGER NOT NULL DEFAULT 0,
+            config_version TEXT    NOT NULL DEFAULT '',
+            active         INTEGER NOT NULL DEFAULT 1
         )
     """)
+    # Migrations for existing hosts tables (may have old columns)
+    for col, definition in [
+        ("node_token",     "TEXT"),
+        ("protocols",      'TEXT NOT NULL DEFAULT \'["hysteria2"]\''),
+        ("node_ports",     "TEXT NOT NULL DEFAULT '{}'"),
+        ("last_seen",      "INTEGER NOT NULL DEFAULT 0"),
+        ("config_version", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE hosts ADD COLUMN {col} {definition}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
     cur.execute("""
         CREATE TABLE IF NOT EXISTS config (
             key   TEXT PRIMARY KEY,
@@ -75,7 +93,7 @@ def init_db():
     """)
     defaults = {
         "profile_name_tpl": "Hystron for {uname}",
-        "poll_interval": "600",
+        "node_poll_interval": "30",
         "base_url": "",
         "support_url": "https://discord.gg/qNyybSSPm5",
         "announce": "",
@@ -396,7 +414,18 @@ def delete_traffic(username: str | None = None) -> int:
     return count
 
 
-# ── hosts ─────────────────────────────────────────────────────────────────────
+# ── hosts / nodes ─────────────────────────────────────────────────────────────
+
+
+def _host_dict(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    # Ensure new columns exist with defaults for old rows
+    d.setdefault("node_token", None)
+    d.setdefault("protocols", '["hysteria2"]')
+    d.setdefault("node_ports", "{}")
+    d.setdefault("last_seen", 0)
+    d.setdefault("config_version", "")
+    return d
 
 
 def list_hosts(active_only: bool = False) -> list[dict]:
@@ -406,16 +435,16 @@ def list_hosts(active_only: bool = False) -> list[dict]:
     cur.execute(f"SELECT * FROM hosts {where} ORDER BY address")
     rows = cur.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [_host_dict(r) for r in rows]
 
 
-def get_host(address: str) -> sqlite3.Row | None:
+def get_host(address: str) -> dict | None:
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT * FROM hosts WHERE address = ?", (address,))
     row = cur.fetchone()
     conn.close()
-    return row
+    return _host_dict(row) if row else None
 
 
 def host_exists(address: str) -> bool:
@@ -425,19 +454,25 @@ def host_exists(address: str) -> bool:
 def create_host(
     address: str,
     name: str,
-    api_address: str,
-    api_secret: str,
     *,
     port: int = 443,
     active: bool = True,
+    protocols: list | None = None,
+    node_ports: dict | None = None,
 ) -> dict | None:
     if host_exists(address):
         return None
+    if protocols is None:
+        protocols = ["hysteria2"]
+    if node_ports is None:
+        node_ports = {"hysteria2": port}
+    node_token = secrets.token_urlsafe(32)
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO hosts (address, name, port, api_address, api_secret, active) VALUES (?, ?, ?, ?, ?, ?)",
-        (address, name, port, api_address, api_secret, int(active)),
+        """INSERT INTO hosts (address, name, port, node_token, protocols, node_ports, active)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (address, name, port, node_token, json.dumps(protocols), json.dumps(node_ports), int(active)),
     )
     conn.commit()
     conn.close()
@@ -445,8 +480,9 @@ def create_host(
         "address": address,
         "name": name,
         "port": port,
-        "api_address": api_address,
-        "api_secret": api_secret,
+        "node_token": node_token,
+        "protocols": protocols,
+        "node_ports": node_ports,
         "active": active,
     }
 
@@ -456,9 +492,9 @@ def edit_host(
     *,
     name: str | None = None,
     port: int | None = None,
-    api_address: str | None = None,
-    api_secret: str | None = None,
     active: bool | None = None,
+    protocols: list | None = None,
+    node_ports: dict | None = None,
 ) -> bool:
     if not host_exists(address):
         return False
@@ -468,15 +504,27 @@ def edit_host(
         cur.execute("UPDATE hosts SET name = ? WHERE address = ?", (name, address))
     if port is not None:
         cur.execute("UPDATE hosts SET port = ? WHERE address = ?", (port, address))
-    if api_address is not None:
-        cur.execute("UPDATE hosts SET api_address = ? WHERE address = ?", (api_address, address))
-    if api_secret is not None:
-        cur.execute("UPDATE hosts SET api_secret = ? WHERE address = ?", (api_secret, address))
     if active is not None:
         cur.execute("UPDATE hosts SET active = ? WHERE address = ?", (int(active), address))
+    if protocols is not None:
+        cur.execute("UPDATE hosts SET protocols = ? WHERE address = ?", (json.dumps(protocols), address))
+    if node_ports is not None:
+        cur.execute("UPDATE hosts SET node_ports = ? WHERE address = ?", (json.dumps(node_ports), address))
     conn.commit()
     conn.close()
     return True
+
+
+def regenerate_node_token(address: str) -> str | None:
+    if not host_exists(address):
+        return None
+    token = secrets.token_urlsafe(32)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE hosts SET node_token = ? WHERE address = ?", (token, address))
+    conn.commit()
+    conn.close()
+    return token
 
 
 def delete_host(address: str) -> bool:
@@ -488,6 +536,49 @@ def delete_host(address: str) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+def get_node_by_token(token: str) -> dict | None:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM hosts WHERE node_token = ?", (token,))
+    row = cur.fetchone()
+    conn.close()
+    return _host_dict(row) if row else None
+
+
+def update_node_seen(address: str) -> None:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE hosts SET last_seen = ? WHERE address = ?", (int(time.time()), address))
+    conn.commit()
+    conn.close()
+
+
+def update_node_config_version(address: str, version: str) -> None:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE hosts SET config_version = ? WHERE address = ?", (version, address))
+    conn.commit()
+    conn.close()
+
+
+def compute_config_version(node: dict, users: list) -> str:
+    """Compute a stable hash of the node config + active user list."""
+    payload = {
+        "node": {
+            "address": node["address"],
+            "protocols": node["protocols"],
+            "node_ports": node["node_ports"],
+        },
+        "users": sorted(
+            [{"username": u["username"], "password": u["password"], "active": u["active"]}
+             for u in users],
+            key=lambda x: x["username"],
+        ),
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    return f"sha256:{digest[:16]}"
 
 
 # ── config ────────────────────────────────────────────────────────────────────

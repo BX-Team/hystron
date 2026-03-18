@@ -1,28 +1,16 @@
-import asyncio
 import os
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response, status
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .polling import poll_hysteria
 from .routes.internal import config, hosts, traffic, users
+from .routes.node import sync as node_sync
+from .routes.node import traffic as node_traffic
 from .routes.public import auth, sub
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    task = asyncio.create_task(poll_hysteria())
-    yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
-public_app = FastAPI(lifespan=lifespan)
+public_app = FastAPI()
 public_app.mount(
     "/static",
     StaticFiles(directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")),
@@ -57,3 +45,7 @@ internal_app.include_router(users.router)
 internal_app.include_router(traffic.router)
 internal_app.include_router(hosts.router)
 internal_app.include_router(config.router)
+
+node_app = FastAPI()
+node_app.include_router(node_sync.router)
+node_app.include_router(node_traffic.router)

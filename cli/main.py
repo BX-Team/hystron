@@ -88,7 +88,7 @@ def _compose_env() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 app = typer.Typer(
     name="hystron",
-    help="[bold green]Hystron[/bold green] — Hysteria2 panel management CLI.",
+    help="[bold green]Hystron[/bold green] — xray-core VPN panel management CLI.",
     add_completion=False,
     rich_markup_mode="rich",
     no_args_is_help=True,
@@ -387,101 +387,129 @@ def traffic_list(
 # Hosts sub-app
 # ─────────────────────────────────────────────────────────────────────────────
 hosts_app = typer.Typer(
-    help="Manage Hysteria2 hosts.",
+    help="Manage nodes (xray-core agents).",
     add_completion=False,
     rich_markup_mode="rich",
     no_args_is_help=True,
 )
 app.add_typer(hosts_app, name="hosts")
+# Alias: hystron nodes <cmd>
+app.add_typer(hosts_app, name="nodes")
 
 
 @hosts_app.command("list")
 def hosts_list():
-    """List all hosts."""
+    """List all nodes."""
     rows = _api("GET", "/api/hosts")
     if not rows:
-        console.print("No hosts found.")
+        console.print("No nodes found.")
         return
-    table = Table("address", "name", "port", "active", "api_address")
+    table = Table("address", "name", "port", "protocols", "online", "active")
     for h in rows:
+        protos = ", ".join(h.get("protocols") or [])
+        online = h.get("online", False)
         table.add_row(
             h["address"],
             h["name"],
             str(h["port"]),
+            protos,
+            "[green]yes[/green]" if online else "[red]no[/red]",
             "[green]yes[/green]" if h["active"] else "[red]no[/red]",
-            h["api_address"],
         )
     console.print(table)
 
 
 @hosts_app.command("create")
 def hosts_create(
-    address: str = typer.Argument(..., help="Host address (domain or IP)"),
+    address: str = typer.Argument(..., help="Node address (domain or IP)"),
     name: str = typer.Option(..., "--name", "-n", help="Display name"),
-    api_address: str = typer.Option(..., "--api-address", "-a", help="Hysteria2 API address"),
-    api_secret: str = typer.Option(..., "--api-secret", "-s", help="Hysteria2 API secret"),
-    port: int = typer.Option(443, "--port", "-p", help="Port"),
-    active: bool = typer.Option(True, "--active", help="Enable host"),
+    port: int = typer.Option(443, "--port", "-p", help="Primary port"),
+    protocols: str = typer.Option(
+        "hysteria2", "--protocols", help="Comma-separated list: hysteria2,vless,trojan"
+    ),
+    node_ports: Optional[str] = typer.Option(
+        None, "--node-ports", help='JSON port map, e.g. \'{"hysteria2":443,"vless":8443}\''
+    ),
+    active: bool = typer.Option(True, "--active", help="Enable node"),
 ):
-    """Add a new Hysteria2 host."""
-    _api(
+    """Register a new node. Prints the node token to copy to the node server."""
+    import json as _json
+    proto_list = [p.strip() for p in protocols.split(",") if p.strip()]
+    ports_dict = _json.loads(node_ports) if node_ports else {p: port for p in proto_list}
+    result = _api(
         "POST",
         "/api/hosts",
         json={
             "address": address,
             "name": name,
-            "api_address": api_address,
-            "api_secret": api_secret,
             "port": port,
+            "protocols": proto_list,
+            "node_ports": ports_dict,
             "active": active,
         },
     )
-    console.print(f"[green]Host '{address}' created.[/green]")
+    console.print(f"[green]Node '{address}' created.[/green]")
+    console.print(f"\n  [bold]node_token[/bold]: {result.get('node_token', '?')}")
+    console.print("\n  [yellow]Copy this token to the node's .env as HYSTRON_NODE_TOKEN[/yellow]\n")
 
 
 @hosts_app.command("info")
-def hosts_info(address: str = typer.Argument(..., help="Host address")):
-    """Show details of a host."""
+def hosts_info(address: str = typer.Argument(..., help="Node address")):
+    """Show details of a node."""
     row = _api("GET", f"/api/hosts/{address}")
     table = Table(show_header=False, box=None, padding=(0, 2))
-    for key in ("address", "name", "port", "api_address", "api_secret", "active"):
-        table.add_row(key, str(row[key]))
+    table.add_row("address", row["address"])
+    table.add_row("name", row["name"])
+    table.add_row("port", str(row["port"]))
+    table.add_row("protocols", ", ".join(row.get("protocols") or []))
+    table.add_row("node_ports", str(row.get("node_ports", {})))
+    table.add_row("active", "[green]yes[/green]" if row["active"] else "[red]no[/red]")
+    table.add_row("online", "[green]yes[/green]" if row.get("online") else "[red]no[/red]")
     console.print(table)
 
 
 @hosts_app.command("edit")
 def hosts_edit(
-    address: str = typer.Argument(..., help="Host address"),
+    address: str = typer.Argument(..., help="Node address"),
     name: Optional[str] = typer.Option(None, "--name", "-n"),
     port: Optional[int] = typer.Option(None, "--port", "-p"),
-    api_address: Optional[str] = typer.Option(None, "--api-address", "-a"),
-    api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s"),
     active: Optional[bool] = typer.Option(None, "--active"),
+    protocols: Optional[str] = typer.Option(None, "--protocols"),
+    node_ports: Optional[str] = typer.Option(None, "--node-ports"),
 ):
-    """Edit an existing host."""
+    """Edit a node."""
+    import json as _json
     body: dict[str, Any] = {}
     if name is not None:
         body["name"] = name
     if port is not None:
         body["port"] = port
-    if api_address is not None:
-        body["api_address"] = api_address
-    if api_secret is not None:
-        body["api_secret"] = api_secret
     if active is not None:
         body["active"] = active
+    if protocols is not None:
+        body["protocols"] = [p.strip() for p in protocols.split(",") if p.strip()]
+    if node_ports is not None:
+        body["node_ports"] = _json.loads(node_ports)
     _api("PATCH", f"/api/hosts/{address}", json=body)
-    console.print(f"[green]Host '{address}' updated.[/green]")
+    console.print(f"[green]Node '{address}' updated.[/green]")
+
+
+@hosts_app.command("token")
+def hosts_token(address: str = typer.Argument(..., help="Node address")):
+    """Regenerate and show the node token."""
+    result = _api("POST", f"/api/hosts/{address}/token")
+    console.print(f"\n  [bold]node_token[/bold]: {result.get('node_token', '?')}")
+    console.print("\n  [yellow]Update HYSTRON_NODE_TOKEN on the node and restart it.[/yellow]\n")
 
 
 @hosts_app.command("delete")
 def hosts_delete(
-    address: str = typer.Argument(..., help="Host address"),
+    address: str = typer.Argument(..., help="Node address"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Delete a host."""
+    """Delete a node."""
     if not yes:
-        typer.confirm(f"Delete host '{address}'?", abort=True)
+        typer.confirm(f"Delete node '{address}'?", abort=True)
     _api("DELETE", f"/api/hosts/{address}")
     console.print(f"[green]Deleted '{address}'.[/green]")
 
