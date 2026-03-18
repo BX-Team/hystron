@@ -54,10 +54,7 @@ async def _report_traffic(
     inbounds: list[dict],
 ) -> list[str]:
     payload = {
-        "stats": [
-            {"username": s.username, "tx": s.tx, "rx": s.rx}
-            for s in traffic_stats
-        ],
+        "stats": [{"username": s.username, "tx": s.tx, "rx": s.rx} for s in traffic_stats],
         "inbounds": inbounds,
     }
     try:
@@ -103,20 +100,24 @@ async def run() -> None:
         inbounds = config.extract_inbounds(template)
     else:
         # Minimal fallback config — xray will start but do nothing useful
-        config.write({
-            "log": {"loglevel": "warning"},
-            "inbounds": [{
-                "tag": "hystron-api",
-                "listen": "127.0.0.1",
-                "port": config.XRAY_STATS_PORT,
-                "protocol": "dokodemo-door",
-                "settings": {"address": "127.0.0.1"},
-            }],
-            "outbounds": [{"tag": "direct", "protocol": "freedom"}],
-            "api": {"tag": "api", "services": ["StatsService", "HandlerService"]},
-            "stats": {},
-            "routing": {"rules": [{"type": "field", "inboundTag": ["hystron-api"], "outboundTag": "api"}]},
-        })
+        config.write(
+            {
+                "log": {"loglevel": "warning"},
+                "inbounds": [
+                    {
+                        "tag": "hystron-api",
+                        "listen": "127.0.0.1",
+                        "port": config.XRAY_STATS_PORT,
+                        "protocol": "dokodemo-door",
+                        "settings": {"address": "127.0.0.1"},
+                    }
+                ],
+                "outbounds": [{"tag": "direct", "protocol": "freedom"}],
+                "api": {"tag": "api", "services": ["StatsService", "HandlerService"]},
+                "stats": {},
+                "routing": {"rules": [{"type": "field", "inboundTag": ["hystron-api"], "outboundTag": "api"}]},
+            }
+        )
         inbounds = []
 
     await xray.start()

@@ -14,12 +14,8 @@ import os
 
 from .models import UserEntry
 
-XRAY_TEMPLATE_PATH = os.environ.get(
-    "XRAY_TEMPLATE_PATH", "/var/lib/hystron/xray-template.json"
-)
-XRAY_CONFIG_PATH = os.environ.get(
-    "XRAY_CONFIG_PATH", "/var/lib/hystron/xray.json"
-)
+XRAY_TEMPLATE_PATH = os.environ.get("XRAY_TEMPLATE_PATH", "/var/lib/hystron/xray-template.json")
+XRAY_CONFIG_PATH = os.environ.get("XRAY_CONFIG_PATH", "/var/lib/hystron/xray.json")
 XRAY_STATS_PORT = int(os.environ.get("XRAY_STATS_PORT", "10085"))
 
 
@@ -37,6 +33,7 @@ def _make_client(proto: str, user: UserEntry) -> dict:
 def fill_clients(template: dict, users: list[UserEntry]) -> dict:
     """Return a copy of *template* with clients arrays populated from *users*."""
     import copy
+
     cfg = copy.deepcopy(template)
     active_users = [u for u in users if u.active]
 
@@ -55,44 +52,50 @@ def fill_clients(template: dict, users: list[UserEntry]) -> dict:
 def ensure_stats_inbound(cfg: dict) -> dict:
     """Add the xray stats API inbound if it isn't already present."""
     import copy
+
     cfg = copy.deepcopy(cfg)
 
     # Check if stats API inbound already exists
     has_stats_inbound = any(
-        inb.get("protocol") == "dokodemo-door" and
-        inb.get("listen") == "127.0.0.1"
-        for inb in cfg.get("inbounds", [])
+        inb.get("protocol") == "dokodemo-door" and inb.get("listen") == "127.0.0.1" for inb in cfg.get("inbounds", [])
     )
     if not has_stats_inbound:
-        cfg.setdefault("inbounds", []).append({
-            "tag": "hystron-api",
-            "listen": "127.0.0.1",
-            "port": XRAY_STATS_PORT,
-            "protocol": "dokodemo-door",
-            "settings": {"address": "127.0.0.1"},
-        })
+        cfg.setdefault("inbounds", []).append(
+            {
+                "tag": "hystron-api",
+                "listen": "127.0.0.1",
+                "port": XRAY_STATS_PORT,
+                "protocol": "dokodemo-door",
+                "settings": {"address": "127.0.0.1"},
+            }
+        )
 
     # Ensure stats/api/policy blocks exist
     cfg.setdefault("api", {"tag": "api", "services": ["StatsService", "HandlerService"]})
     cfg.setdefault("stats", {})
-    cfg.setdefault("policy", {
-        "levels": {"0": {"statsUserUplink": True, "statsUserDownlink": True}},
-        "system": {"statsInboundUplink": True, "statsInboundDownlink": True},
-    })
+    cfg.setdefault(
+        "policy",
+        {
+            "levels": {"0": {"statsUserUplink": True, "statsUserDownlink": True}},
+            "system": {"statsInboundUplink": True, "statsInboundDownlink": True},
+        },
+    )
 
     # Ensure routing rule for stats API
     routing = cfg.setdefault("routing", {"rules": []})
     rules = routing.setdefault("rules", [])
     has_api_rule = any(
-        "hystron-api" in r.get("inboundTag", []) or "api-inbound" in r.get("inboundTag", [])
-        for r in rules
+        "hystron-api" in r.get("inboundTag", []) or "api-inbound" in r.get("inboundTag", []) for r in rules
     )
     if not has_api_rule:
-        rules.insert(0, {
-            "type": "field",
-            "inboundTag": ["hystron-api"],
-            "outboundTag": "api",
-        })
+        rules.insert(
+            0,
+            {
+                "type": "field",
+                "inboundTag": ["hystron-api"],
+                "outboundTag": "api",
+            },
+        )
 
     return cfg
 

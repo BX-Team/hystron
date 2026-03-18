@@ -8,6 +8,7 @@ MODE = os.environ.get("HYSTRON_MODE", "control").lower()
 
 async def _run_control() -> None:
     from app.database import init_db
+
     init_db()
 
     from app.main import internal_app, node_app, public_app
@@ -25,6 +26,7 @@ async def _run_control() -> None:
 
 async def _run_node() -> None:
     from node.agent import run
+
     await run()
 
 

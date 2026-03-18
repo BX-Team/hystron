@@ -74,10 +74,10 @@ def init_db():
     """)
     # Migrations for existing hosts tables (may have old columns)
     for col, definition in [
-        ("node_token",     "TEXT"),
-        ("protocols",      'TEXT NOT NULL DEFAULT \'["hysteria2"]\''),
-        ("node_ports",     "TEXT NOT NULL DEFAULT '{}'"),
-        ("last_seen",      "INTEGER NOT NULL DEFAULT 0"),
+        ("node_token", "TEXT"),
+        ("protocols", "TEXT NOT NULL DEFAULT '[\"hysteria2\"]'"),
+        ("node_ports", "TEXT NOT NULL DEFAULT '{}'"),
+        ("last_seen", "INTEGER NOT NULL DEFAULT 0"),
         ("config_version", "TEXT NOT NULL DEFAULT ''"),
     ]:
         try:
@@ -276,6 +276,7 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
         return False, "overlimit"
 
     return True, ""
+
 
 # ── devices ───────────────────────────────────────────────────────────────────
 
@@ -572,8 +573,7 @@ def compute_config_version(node: dict, users: list) -> str:
             "node_ports": node["node_ports"],
         },
         "users": sorted(
-            [{"username": u["username"], "password": u["password"], "active": u["active"]}
-             for u in users],
+            [{"username": u["username"], "password": u["password"], "active": u["active"]} for u in users],
             key=lambda x: x["username"],
         ),
     }

@@ -144,6 +144,7 @@ class UserQRModal(BaseModal):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         await self.key_escape()
 
+
 # ── modal: user devices ───────────────────────────────────────────────────────
 
 
@@ -222,6 +223,7 @@ class UserDevicesModal(BaseModal):
             await self.action_delete_device()
         elif event.button.id == "close":
             await self.key_escape()
+
 
 # ── modals: users ─────────────────────────────────────────────────────────────
 
@@ -495,6 +497,7 @@ class HostEditModal(BaseModal):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
             import json as _json
+
             name = self.query_one("#name").value.strip() or None
             port_raw = self.query_one("#port").value.strip()
             protocols_raw = self.query_one("#protocols").value.strip()
@@ -834,6 +837,7 @@ class HostsContent(Static):
 
         import json as _json
         import time as _time
+
         _now = int(_time.time())
         columns = ["#", "Address", "Name", "Port", "Protocols", "Online", "Active"]
         data = [
@@ -842,7 +846,11 @@ class HostsContent(Static):
                 r["address"],
                 r["name"],
                 str(r["port"]),
-                ", ".join(_json.loads(r["protocols"]) if isinstance(r["protocols"], str) else (r.get("protocols") or ["hysteria2"])),
+                ", ".join(
+                    _json.loads(r["protocols"])
+                    if isinstance(r["protocols"], str)
+                    else (r.get("protocols") or ["hysteria2"])
+                ),
                 "\u2714" if (r.get("last_seen", 0) or 0) > _now - 60 else "\u2716",
                 "\u2714" if r["active"] else "\u2716",
             ]

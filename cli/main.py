@@ -424,9 +424,7 @@ def hosts_create(
     address: str = typer.Argument(..., help="Node address (domain or IP)"),
     name: str = typer.Option(..., "--name", "-n", help="Display name"),
     port: int = typer.Option(443, "--port", "-p", help="Primary port"),
-    protocols: str = typer.Option(
-        "hysteria2", "--protocols", help="Comma-separated list: hysteria2,vless,trojan"
-    ),
+    protocols: str = typer.Option("hysteria2", "--protocols", help="Comma-separated list: hysteria2,vless,trojan"),
     node_ports: Optional[str] = typer.Option(
         None, "--node-ports", help='JSON port map, e.g. \'{"hysteria2":443,"vless":8443}\''
     ),
@@ -434,6 +432,7 @@ def hosts_create(
 ):
     """Register a new node. Prints the node token to copy to the node server."""
     import json as _json
+
     proto_list = [p.strip() for p in protocols.split(",") if p.strip()]
     ports_dict = _json.loads(node_ports) if node_ports else {p: port for p in proto_list}
     result = _api(
@@ -479,6 +478,7 @@ def hosts_edit(
 ):
     """Edit a node."""
     import json as _json
+
     body: dict[str, Any] = {}
     if name is not None:
         body["name"] = name

@@ -11,7 +11,10 @@ _restart_delay = 1.0
 async def start() -> asyncio.subprocess.Process:
     global _proc, _restart_delay
     _proc = await asyncio.create_subprocess_exec(
-        "xray", "run", "-c", XRAY_CONFIG_PATH,
+        "xray",
+        "run",
+        "-c",
+        XRAY_CONFIG_PATH,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
@@ -51,9 +54,12 @@ async def kick_users(usernames: list[str]) -> None:
     for username in usernames:
         try:
             proc = await asyncio.create_subprocess_exec(
-                "xray", "api", "rmuser",
+                "xray",
+                "api",
+                "rmuser",
                 f"--server=127.0.0.1:{XRAY_STATS_PORT}",
-                "--email", username,
+                "--email",
+                username,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )

@@ -328,9 +328,7 @@ def _xray_outbound(proto: str, uname: str, pwd: str, host: str, port: int, tag: 
         return {
             "tag": tag,
             "protocol": "trojan",
-            "settings": {
-                "servers": [{"address": host, "port": port, "password": pwd}]
-            },
+            "settings": {"servers": [{"address": host, "port": port, "password": pwd}]},
             "streamSettings": {
                 "network": "tcp",
                 "security": "tls",

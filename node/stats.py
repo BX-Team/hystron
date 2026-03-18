@@ -12,9 +12,12 @@ async def collect() -> list[TrafficStat]:
     """
     try:
         proc = await asyncio.create_subprocess_exec(
-            "xray", "api", "statsquery",
+            "xray",
+            "api",
+            "statsquery",
             f"--server=127.0.0.1:{XRAY_STATS_PORT}",
-            "--pattern", "user>>>",
+            "--pattern",
+            "user>>>",
             "--reset",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
