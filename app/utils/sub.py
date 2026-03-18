@@ -147,15 +147,14 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
 
 def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
-    config = json.load(open(get_template_file("xray.json")))
-
-    proxy_tags: list[str] = []
+    configs = []
     for h in hosts:
-        tag = h["name"]
-        proxy_tags.append(tag)
-        config["outbounds"].append(
+        config = json.load(open(get_template_file("xray.json")))
+        config["remarks"] = h["name"]
+        config["outbounds"].insert(
+            0,
             {
-                "tag": tag,
+                "tag": "proxy",
                 "protocol": "hysteria",
                 "settings": {
                     "version": 2,
@@ -175,13 +174,12 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
                         "alpn": ["h3"],
                     },
                 },
-            }
+            },
         )
-
-    config["remarks"] = ", ".join(proxy_tags) if proxy_tags else uname
+        configs.append(config)
 
     return PlainTextResponse(
-        json.dumps(config, indent=2, ensure_ascii=False),
+        json.dumps(configs, indent=2, ensure_ascii=False),
         media_type="application/json",
         headers=base_headers,
     )
