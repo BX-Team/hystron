@@ -138,7 +138,13 @@
       cursor: pointer; transition: border-color .15s; user-select: none;
     }
     .link-row:hover { border-color: #333; }
+    .link-info { display: flex; flex-direction: column; gap: 4px; }
     .link-name { font-size: 14px; color: #737373; }
+    .link-proto {
+      font-size: 10px; color: #404040; border: 1px solid #262626;
+      border-radius: 4px; padding: 2px 6px; letter-spacing: .5px;
+      text-transform: uppercase; align-self: flex-start;
+    }
     .link-right { display: flex; align-items: center; gap: 8px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .dot.online  { background: #34d399; box-shadow: 0 0 6px rgba(52,211,153,.5); }
@@ -275,7 +281,10 @@
       <div class="links-list">
         {% for l in links %}
         <div class="link-row" onclick="copyText('{{ l.uri }}')">
-          <span class="link-name">{{ l.label }}</span>
+          <div class="link-info">
+            <span class="link-name">{{ l.label }}</span>
+            <span class="link-proto">{{ l.proto }}</span>
+          </div>
           <div class="link-right">
             <div class="dot unknown" data-host="{{ l.host }}"></div>
           </div>

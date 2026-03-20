@@ -79,7 +79,7 @@ def make_links(uname: str, pwd: str) -> list[dict]:
             node_ports = json.loads(node_ports)
         for proto in protocols:
             port = node_ports.get(proto, h["port"])
-            label = f"{h['name']} ({proto})"
+            label = h["name"]
             uri = _build_uri(proto, uname, pwd, h["address"], port, label)
             if uri:
                 links.append({"uri": uri, "label": label, "host": h["address"], "proto": proto})
@@ -137,7 +137,7 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
             node_ports = json.loads(node_ports)
         for proto in protocols:
             port = node_ports.get(proto, h["port"])
-            tag = f"{h['name']} ({proto})"
+            tag = h["name"]
             proxy_names.append(tag)
             outbound = _singbox_outbound(proto, uname, pwd, h["address"], port, tag)
             if outbound:
@@ -201,7 +201,7 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
             node_ports = json.loads(node_ports)
         for proto in protocols:
             port = node_ports.get(proto, h["port"])
-            name = f"{h['name']} ({proto})"
+            name = h["name"]
             proxy_names.append(name)
             proxy_lines.append(_clash_proxy(proto, name, uname, pwd, h["address"], port))
 
@@ -266,7 +266,7 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
             node_ports = json.loads(node_ports)
         for proto in protocols:
             port = node_ports.get(proto, h["port"])
-            tag = f"{h['name']} ({proto})"
+            tag = h["name"]
             cfg = json.load(open(get_template_file("xray.json")))
             cfg["remarks"] = tag
             outbound = _xray_outbound(proto, uname, pwd, h["address"], port, tag)
