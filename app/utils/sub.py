@@ -256,8 +256,7 @@ def _clash_proxy(proto: str, name: str, uname: str, pwd: str, host: str, port: i
 
 def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts(active_only=True)
-    cfg = json.load(open(get_template_file("xray.json")))
-    proxy_tags: list[str] = []
+    configs = []
     for h in hosts:
         protocols = h.get("protocols", '["hysteria2"]')
         node_ports = h.get("node_ports", "{}")
@@ -268,13 +267,14 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
         for proto in protocols:
             port = node_ports.get(proto, h["port"])
             tag = f"{h['name']} ({proto})"
-            proxy_tags.append(tag)
+            cfg = json.load(open(get_template_file("xray.json")))
+            cfg["remarks"] = tag
             outbound = _xray_outbound(proto, uname, pwd, h["address"], port, tag)
             if outbound:
                 cfg["outbounds"].append(outbound)
-    cfg["remarks"] = ", ".join(proxy_tags) if proxy_tags else uname
+            configs.append(cfg)
     return PlainTextResponse(
-        json.dumps(cfg, indent=2, ensure_ascii=False),
+        json.dumps(configs, indent=2, ensure_ascii=False),
         media_type="application/json",
         headers=base_headers,
     )
