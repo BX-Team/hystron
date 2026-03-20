@@ -1,164 +1,93 @@
-import os
 import secrets
-import sqlite3
 import time
 import uuid
 
-_DB_PATH = os.environ.get("HYST_DB_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "app.db"))
+from sqlalchemy import delete, func, select, text, update
+from sqlalchemy.engine import CursorResult
 
+from .db import SessionLocal
+from .models import Config, Device, Host, HostTag, Traffic, User, UserTag
 
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+_CONFIG_DEFAULTS = {
+    "profile_name_tpl": "Hystron for {uname}",
+    "poll_interval": "600",
+    "base_url": "",
+    "support_url": "https://discord.gg/qNyybSSPm5",
+    "announce": "",
+    "announce-url": "",
+    "subscription_path": "/sub",
+    "whitelist_enable": "false",
+    "whitelist": "",
+    "forbidden_domains": "",
+    # Template overrides: directory and per-format paths.
+    # Per-format paths take precedence over templates_dir.
+    # If empty, falls back to templates_dir/<filename>, then bundled template.
+    "templates_dir": "/var/lib/hystron/templates",
+    "template_singbox": "",
+    "template_clash": "",
+    "template_xray": "",
+    "template_index": "",
+}
 
 
 def init_db():
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            username      TEXT    PRIMARY KEY,
-            password      TEXT    NOT NULL,
-            sid           TEXT    UNIQUE NOT NULL,
-            active        INTEGER NOT NULL DEFAULT 1,
-            traffic_limit INTEGER NOT NULL DEFAULT 0,
-            expires_at    INTEGER NOT NULL DEFAULT 0,
-            device_limit  INTEGER NOT NULL DEFAULT 0
-        )
-    """)
-    # Migration: add device_limit to existing databases
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN device_limit INTEGER NOT NULL DEFAULT 0")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS devices (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            username     TEXT    NOT NULL,
-            hwid         TEXT    NOT NULL,
-            device_os    TEXT    NOT NULL,
-            ver_os       TEXT    NOT NULL,
-            device_model TEXT    NOT NULL,
-            app_version  TEXT    NOT NULL
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS traffic (
-            id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts       TEXT    NOT NULL,
-            server   TEXT    NOT NULL,
-            username TEXT    NOT NULL,
-            tx       INTEGER NOT NULL,
-            rx       INTEGER NOT NULL
-        )
-    """)
-    cur.execute("CREATE INDEX IF NOT EXISTS traffic_ts   ON traffic (ts)")
-    cur.execute("CREATE INDEX IF NOT EXISTS traffic_user ON traffic (username)")
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS hosts (
-            address     TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            port        INTEGER NOT NULL DEFAULT 443,
-            api_address TEXT NOT NULL,
-            api_secret  TEXT NOT NULL,
-            active      INTEGER NOT NULL DEFAULT 1
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS host_tags (
-            host_address TEXT NOT NULL,
-            tag          TEXT NOT NULL,
-            PRIMARY KEY (host_address, tag)
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_tags (
-            username TEXT NOT NULL,
-            tag      TEXT NOT NULL,
-            PRIMARY KEY (username, tag)
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS config (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-    """)
-    defaults = {
-        "profile_name_tpl": "Hystron for {uname}",
-        "poll_interval": "600",
-        "base_url": "",
-        "support_url": "https://discord.gg/qNyybSSPm5",
-        "announce": "",
-        "announce-url": "",
-        "subscription_path": "/sub",
-        "whitelist_enable": "false",
-        "whitelist": "",
-        "forbidden_domains": "",
-        # Template overrides: directory and per-format paths.
-        # Per-format paths take precedence over templates_dir.
-        # If empty, falls back to templates_dir/<filename>, then bundled template.
-        "templates_dir": "/var/lib/hystron/templates",
-        "template_singbox": "",
-        "template_clash": "",
-        "template_xray": "",
-        "template_index": "",
-    }
-    for k, v in defaults.items():
-        cur.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v))
-    conn.commit()
-    conn.close()
+    """Seed default config values. Schema is managed by Alembic."""
+    with SessionLocal() as session:
+        for k, v in _CONFIG_DEFAULTS.items():
+            if session.get(Config, k) is None:
+                session.add(Config(key=k, value=v))
+        session.commit()
 
 
 # ── users ─────────────────────────────────────────────────────────────────────
 
 
 def user_exists(username: str) -> bool:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-    exists = cur.fetchone() is not None
-    conn.close()
-    return exists
+    with SessionLocal() as session:
+        return session.get(User, username) is not None
 
 
-def get_user(username: str) -> sqlite3.Row | None:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE username = ?", (username,))
-    row = cur.fetchone()
-    conn.close()
-    return row
+def get_user(username: str) -> dict | None:
+    with SessionLocal() as session:
+        user = session.get(User, username)
+        if user is None:
+            return None
+        return {c.key: getattr(user, c.key) for c in User.__table__.columns}
+
+
+def get_user_by_sid(sid: str) -> dict | None:
+    with SessionLocal() as session:
+        user = session.scalars(select(User).where(User.sid == sid)).one_or_none()
+        if user is None:
+            return None
+        return {c.key: getattr(user, c.key) for c in User.__table__.columns}
 
 
 def list_users() -> list:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users ORDER BY username")
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+    with SessionLocal() as session:
+        users = session.scalars(select(User).order_by(User.username)).all()
+        return [{c.key: getattr(u, c.key) for c in User.__table__.columns} for u in users]
 
 
 def list_users_with_traffic() -> list[dict]:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT u.username, u.password, u.sid, u.active,
-               u.traffic_limit, u.expires_at, u.device_limit,
-               COALESCE(SUM(t.tx + t.rx), 0) AS total,
-               (SELECT COUNT(*) FROM devices d WHERE d.username = u.username) AS device_count
-        FROM users u
-        LEFT JOIN traffic t ON t.username = u.username
-        GROUP BY u.username
-        ORDER BY u.username
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with SessionLocal() as session:
+        rows = (
+            session.execute(
+                text("""
+                SELECT u.username, u.password, u.sid, u.active,
+                       u.traffic_limit, u.expires_at, u.device_limit,
+                       COALESCE(SUM(t.tx + t.rx), 0) AS total,
+                       (SELECT COUNT(*) FROM devices d WHERE d.username = u.username) AS device_count
+                FROM users u
+                LEFT JOIN traffic t ON t.username = u.username
+                GROUP BY u.username
+                ORDER BY u.username
+            """)
+            )
+            .mappings()
+            .all()
+        )
+        return [dict(r) for r in rows]
 
 
 def create_user(
@@ -172,14 +101,18 @@ def create_user(
         return None
     password = str(uuid.uuid4())
     sid = secrets.token_urlsafe(12)
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO users (username, password, sid, traffic_limit, expires_at, device_limit) VALUES (?, ?, ?, ?, ?, ?)",
-        (username, password, sid, traffic_limit, expires_at, device_limit),
-    )
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        session.add(
+            User(
+                username=username,
+                password=password,
+                sid=sid,
+                traffic_limit=traffic_limit,
+                expires_at=expires_at,
+                device_limit=device_limit,
+            )
+        )
+        session.commit()
     return {
         "username": username,
         "password": password,
@@ -200,41 +133,36 @@ def edit_user(
     expires_at: int | None = None,
     device_limit: int | None = None,
 ) -> bool:
-    if not user_exists(username):
-        return False
-    conn = get_db()
-    cur = conn.cursor()
-    if password is not None:
-        cur.execute("UPDATE users SET password = ? WHERE username = ?", (password, username))
-    if sid is not None:
-        cur.execute("UPDATE users SET sid = ? WHERE username = ?", (sid, username))
-    if active is not None:
-        cur.execute("UPDATE users SET active = ? WHERE username = ?", (int(active), username))
-    if traffic_limit is not None:
-        cur.execute(
-            "UPDATE users SET traffic_limit = ? WHERE username = ?",
-            (traffic_limit, username),
-        )
-    if expires_at is not None:
-        cur.execute("UPDATE users SET expires_at = ? WHERE username = ?", (expires_at, username))
-    if device_limit is not None:
-        cur.execute("UPDATE users SET device_limit = ? WHERE username = ?", (device_limit, username))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        user = session.get(User, username)
+        if user is None:
+            return False
+        if password is not None:
+            user.password = password
+        if sid is not None:
+            user.sid = sid
+        if active is not None:
+            user.active = int(active)
+        if traffic_limit is not None:
+            user.traffic_limit = traffic_limit
+        if expires_at is not None:
+            user.expires_at = expires_at
+        if device_limit is not None:
+            user.device_limit = device_limit
+        session.commit()
     return True
 
 
 def delete_user(username: str) -> bool:
-    if not user_exists(username):
-        return False
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM users WHERE username = ?", (username,))
-    cur.execute("DELETE FROM traffic WHERE username = ?", (username,))
-    cur.execute("DELETE FROM devices WHERE username = ?", (username,))
-    cur.execute("DELETE FROM user_tags WHERE username = ?", (username,))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        user = session.get(User, username)
+        if user is None:
+            return False
+        session.execute(delete(Traffic).where(Traffic.username == username))
+        session.execute(delete(Device).where(Device.username == username))
+        session.execute(delete(UserTag).where(UserTag.username == username))
+        session.delete(user)
+        session.commit()
     return True
 
 
@@ -246,22 +174,23 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
     Validates user credentials and checks limits.
     Returns (ok, reason) — reason is "" if ok, otherwise "invalid"/"inactive"/"expired"/"overlimit".
     """
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT u.active, u.traffic_limit, u.expires_at,
-               COALESCE(SUM(CASE WHEN t.ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')
-                                 THEN t.tx + t.rx ELSE 0 END), 0) AS total_traffic
-        FROM users u
-        LEFT JOIN traffic t ON t.username = u.username
-        WHERE u.username = ? AND u.password = ?
-        GROUP BY u.username
-    """,
-        (username, password),
-    )
-    row = cur.fetchone()
-    conn.close()
+    with SessionLocal() as session:
+        row = (
+            session.execute(
+                text("""
+                SELECT u.active, u.traffic_limit, u.expires_at,
+                       COALESCE(SUM(CASE WHEN t.ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')
+                                         THEN t.tx + t.rx ELSE 0 END), 0) AS total_traffic
+                FROM users u
+                LEFT JOIN traffic t ON t.username = u.username
+                WHERE u.username = :username AND u.password = :password
+                GROUP BY u.username
+            """),
+                {"username": username, "password": password},
+            )
+            .mappings()
+            .one_or_none()
+        )
 
     if not row:
         return False, "invalid"
@@ -279,15 +208,13 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
 
 
 def list_devices(username: str | None = None) -> list[dict]:
-    conn = get_db()
-    cur = conn.cursor()
-    if username:
-        cur.execute("SELECT * FROM devices WHERE username = ? ORDER BY id", (username,))
-    else:
-        cur.execute("SELECT * FROM devices ORDER BY username, id")
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with SessionLocal() as session:
+        if username:
+            q = select(Device).where(Device.username == username).order_by(Device.id)
+        else:
+            q = select(Device).order_by(Device.username, Device.id)
+        devices = session.scalars(q).all()
+        return [{c.key: getattr(d, c.key) for c in Device.__table__.columns} for d in devices]
 
 
 def register_device(
@@ -302,48 +229,46 @@ def register_device(
     Register or update a device for a user.
     Returns False if the user's device_limit is reached and this is a new device.
     """
-    conn = get_db()
-    cur = conn.cursor()
+    with SessionLocal() as session:
+        existing = session.scalars(select(Device).where(Device.username == username, Device.hwid == hwid)).one_or_none()
 
-    cur.execute("SELECT id FROM devices WHERE username = ? AND hwid = ?", (username, hwid))
-    existing = cur.fetchone()
+        if existing:
+            existing.device_os = device_os
+            existing.ver_os = ver_os
+            existing.device_model = device_model
+            existing.app_version = app_version
+            session.commit()
+            return True
 
-    if existing:
-        cur.execute(
-            "UPDATE devices SET device_os=?, ver_os=?, device_model=?, app_version=? WHERE id=?",
-            (device_os, ver_os, device_model, app_version, existing["id"]),
+        # New device — check limit
+        user = session.get(User, username)
+        if user and user.device_limit > 0:
+            count = session.scalar(select(func.count()).select_from(Device).where(Device.username == username))
+            if (count or 0) >= user.device_limit:
+                return False
+
+        session.add(
+            Device(
+                username=username,
+                hwid=hwid,
+                device_os=device_os,
+                ver_os=ver_os,
+                device_model=device_model,
+                app_version=app_version,
+            )
         )
-        conn.commit()
-        conn.close()
-        return True
-
-    # New device — check limit
-    cur.execute("SELECT device_limit FROM users WHERE username = ?", (username,))
-    user_row = cur.fetchone()
-    if user_row and user_row["device_limit"] > 0:
-        cur.execute("SELECT COUNT(*) AS cnt FROM devices WHERE username = ?", (username,))
-        cnt = cur.fetchone()["cnt"]
-        if cnt >= user_row["device_limit"]:
-            conn.close()
-            return False
-
-    cur.execute(
-        "INSERT INTO devices (username, hwid, device_os, ver_os, device_model, app_version) VALUES (?, ?, ?, ?, ?, ?)",
-        (username, hwid, device_os, ver_os, device_model, app_version),
-    )
-    conn.commit()
-    conn.close()
+        session.commit()
     return True
 
 
 def delete_device(device_id: int) -> bool:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM devices WHERE id = ?", (device_id,))
-    count = cur.rowcount
-    conn.commit()
-    conn.close()
-    return count > 0
+    with SessionLocal() as session:
+        device = session.get(Device, device_id)
+        if device is None:
+            return False
+        session.delete(device)
+        session.commit()
+    return True
 
 
 def is_device_allowed(username: str, hwid: str) -> bool:
@@ -351,17 +276,12 @@ def is_device_allowed(username: str, hwid: str) -> bool:
     Returns True if the user has no device_limit set, or the HWID is already registered.
     Returns False if device_limit is set and the HWID is not yet registered.
     """
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT device_limit FROM users WHERE username = ?", (username,))
-    user_row = cur.fetchone()
-    if not user_row or not user_row["device_limit"]:
-        conn.close()
-        return True
-    cur.execute("SELECT 1 FROM devices WHERE username = ? AND hwid = ?", (username, hwid))
-    exists = cur.fetchone() is not None
-    conn.close()
-    return exists
+    with SessionLocal() as session:
+        user = session.get(User, username)
+        if not user or not user.device_limit:
+            return True
+        exists = session.scalars(select(Device).where(Device.username == username, Device.hwid == hwid)).one_or_none()
+        return exists is not None
 
 
 # ── traffic ───────────────────────────────────────────────────────────────────
@@ -379,13 +299,17 @@ _TRAFFIC_SELECT = """
 
 
 def get_traffic(username: str | None = None) -> list[dict]:
-    conn = get_db()
-    cur = conn.cursor()
-    where = "WHERE username = ?" if username else ""
-    params = (username,) if username else ()
-    cur.execute(f"{_TRAFFIC_SELECT} {where} GROUP BY username ORDER BY total DESC", params)
-    rows = cur.fetchall()
-    conn.close()
+    where = "WHERE username = :username" if username else ""
+    params = {"username": username} if username else {}
+    with SessionLocal() as session:
+        rows = (
+            session.execute(
+                text(f"{_TRAFFIC_SELECT} {where} GROUP BY username ORDER BY total DESC"),
+                params,
+            )
+            .mappings()
+            .all()
+        )
     return [
         {
             "username": r["username"],
@@ -399,16 +323,34 @@ def get_traffic(username: str | None = None) -> list[dict]:
     ]
 
 
+def record_traffic_batch(entries: list[tuple[str, str, str, int, int]]) -> None:
+    """Insert multiple traffic records in one transaction. entries: [(ts, server, username, tx, rx)]"""
+    with SessionLocal() as session:
+        session.add_all(
+            [Traffic(ts=ts, server=server, username=username, tx=tx, rx=rx) for ts, server, username, tx, rx in entries]
+        )
+        session.commit()
+
+
+def reset_traffic_limited_users() -> int:
+    """Reactivate users that were deactivated due to daily traffic limits. Returns count of reactivated users."""
+    with SessionLocal() as session:
+        result: CursorResult = session.execute(  # type: ignore[assignment]
+            update(User).where(User.active == 0, User.traffic_limit > 0).values(active=1)
+        )
+        session.commit()
+        return result.rowcount
+
+
 def delete_traffic(username: str | None = None) -> int:
-    conn = get_db()
-    cur = conn.cursor()
-    if username:
-        cur.execute("DELETE FROM traffic WHERE username = ?", (username,))
-    else:
-        cur.execute("DELETE FROM traffic")
-    count = cur.rowcount
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        result: CursorResult
+        if username:
+            result = session.execute(delete(Traffic).where(Traffic.username == username))  # type: ignore[assignment]
+        else:
+            result = session.execute(delete(Traffic))  # type: ignore[assignment]
+        count = result.rowcount
+        session.commit()
     return count
 
 
@@ -416,22 +358,20 @@ def delete_traffic(username: str | None = None) -> int:
 
 
 def list_hosts(active_only: bool = False) -> list[dict]:
-    conn = get_db()
-    cur = conn.cursor()
-    where = "WHERE active = 1" if active_only else ""
-    cur.execute(f"SELECT * FROM hosts {where} ORDER BY address")
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with SessionLocal() as session:
+        q = select(Host).order_by(Host.address)
+        if active_only:
+            q = q.where(Host.active == 1)
+        hosts = session.scalars(q).all()
+        return [{c.key: getattr(h, c.key) for c in Host.__table__.columns} for h in hosts]
 
 
-def get_host(address: str) -> sqlite3.Row | None:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM hosts WHERE address = ?", (address,))
-    row = cur.fetchone()
-    conn.close()
-    return row
+def get_host(address: str) -> dict | None:
+    with SessionLocal() as session:
+        host = session.get(Host, address)
+        if host is None:
+            return None
+        return {c.key: getattr(host, c.key) for c in Host.__table__.columns}
 
 
 def host_exists(address: str) -> bool:
@@ -449,14 +389,18 @@ def create_host(
 ) -> dict | None:
     if host_exists(address):
         return None
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO hosts (address, name, port, api_address, api_secret, active) VALUES (?, ?, ?, ?, ?, ?)",
-        (address, name, port, api_address, api_secret, int(active)),
-    )
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        session.add(
+            Host(
+                address=address,
+                name=name,
+                port=port,
+                api_address=api_address,
+                api_secret=api_secret,
+                active=int(active),
+            )
+        )
+        session.commit()
     return {
         "address": address,
         "name": name,
@@ -476,34 +420,32 @@ def edit_host(
     api_secret: str | None = None,
     active: bool | None = None,
 ) -> bool:
-    if not host_exists(address):
-        return False
-    conn = get_db()
-    cur = conn.cursor()
-    if name is not None:
-        cur.execute("UPDATE hosts SET name = ? WHERE address = ?", (name, address))
-    if port is not None:
-        cur.execute("UPDATE hosts SET port = ? WHERE address = ?", (port, address))
-    if api_address is not None:
-        cur.execute("UPDATE hosts SET api_address = ? WHERE address = ?", (api_address, address))
-    if api_secret is not None:
-        cur.execute("UPDATE hosts SET api_secret = ? WHERE address = ?", (api_secret, address))
-    if active is not None:
-        cur.execute("UPDATE hosts SET active = ? WHERE address = ?", (int(active), address))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        host = session.get(Host, address)
+        if host is None:
+            return False
+        if name is not None:
+            host.name = name
+        if port is not None:
+            host.port = port
+        if api_address is not None:
+            host.api_address = api_address
+        if api_secret is not None:
+            host.api_secret = api_secret
+        if active is not None:
+            host.active = int(active)
+        session.commit()
     return True
 
 
 def delete_host(address: str) -> bool:
-    if not host_exists(address):
-        return False
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM hosts WHERE address = ?", (address,))
-    cur.execute("DELETE FROM host_tags WHERE host_address = ?", (address,))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        host = session.get(Host, address)
+        if host is None:
+            return False
+        session.execute(delete(HostTag).where(HostTag.host_address == address))
+        session.delete(host)
+        session.commit()
     return True
 
 
@@ -511,55 +453,48 @@ def delete_host(address: str) -> bool:
 
 
 def get_host_tags(address: str) -> list[str]:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT tag FROM host_tags WHERE host_address = ? ORDER BY tag", (address,))
-    rows = cur.fetchall()
-    conn.close()
-    return [r["tag"] for r in rows]
+    with SessionLocal() as session:
+        tags = session.scalars(select(HostTag.tag).where(HostTag.host_address == address).order_by(HostTag.tag)).all()
+        return list(tags)
 
 
 def set_host_tags(address: str, tags: list[str]) -> None:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM host_tags WHERE host_address = ?", (address,))
-    for tag in set(tags):
-        cur.execute("INSERT OR IGNORE INTO host_tags (host_address, tag) VALUES (?, ?)", (address, tag))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        session.execute(delete(HostTag).where(HostTag.host_address == address))
+        for tag in set(tags):
+            session.add(HostTag(host_address=address, tag=tag))
+        session.commit()
 
 
 def get_user_tags(username: str) -> list[str]:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT tag FROM user_tags WHERE username = ? ORDER BY tag", (username,))
-    rows = cur.fetchall()
-    conn.close()
-    return [r["tag"] for r in rows]
+    with SessionLocal() as session:
+        tags = session.scalars(select(UserTag.tag).where(UserTag.username == username).order_by(UserTag.tag)).all()
+        return list(tags)
 
 
 def set_user_tags(username: str, tags: list[str]) -> None:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM user_tags WHERE username = ?", (username,))
-    for tag in set(tags):
-        cur.execute("INSERT OR IGNORE INTO user_tags (username, tag) VALUES (?, ?)", (username, tag))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        session.execute(delete(UserTag).where(UserTag.username == username))
+        for tag in set(tags):
+            session.add(UserTag(username=username, tag=tag))
+        session.commit()
 
 
 def list_all_tags() -> list[str]:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT DISTINCT tag FROM host_tags
-        UNION
-        SELECT DISTINCT tag FROM user_tags
-        ORDER BY tag
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    return [r["tag"] for r in rows]
+    with SessionLocal() as session:
+        rows = (
+            session.execute(
+                text("""
+                SELECT DISTINCT tag FROM host_tags
+                UNION
+                SELECT DISTINCT tag FROM user_tags
+                ORDER BY tag
+            """)
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
 
 
 def list_hosts_for_user(username: str, active_only: bool = True) -> list[dict]:
@@ -568,64 +503,61 @@ def list_hosts_for_user(username: str, active_only: bool = True) -> list[dict]:
     - Hosts with no tags are visible to everyone.
     - Hosts with tags are visible only if the user shares at least one tag.
     """
-    conn = get_db()
-    cur = conn.cursor()
     where = "AND h.active = 1" if active_only else ""
-    cur.execute(
-        f"""
-        SELECT h.* FROM hosts h
-        WHERE (
-            NOT EXISTS (SELECT 1 FROM host_tags ht WHERE ht.host_address = h.address)
-            OR EXISTS (
-                SELECT 1 FROM host_tags ht
-                JOIN user_tags ut ON ut.tag = ht.tag
-                WHERE ht.host_address = h.address AND ut.username = ?
+    with SessionLocal() as session:
+        rows = (
+            session.execute(
+                text(f"""
+                SELECT h.* FROM hosts h
+                WHERE (
+                    NOT EXISTS (SELECT 1 FROM host_tags ht WHERE ht.host_address = h.address)
+                    OR EXISTS (
+                        SELECT 1 FROM host_tags ht
+                        JOIN user_tags ut ON ut.tag = ht.tag
+                        WHERE ht.host_address = h.address AND ut.username = :username
+                    )
+                )
+                {where}
+                ORDER BY h.address
+            """),
+                {"username": username},
             )
+            .mappings()
+            .all()
         )
-        {where}
-        ORDER BY h.address
-    """,
-        (username,),
-    )
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+        return [dict(r) for r in rows]
 
 
 # ── config ────────────────────────────────────────────────────────────────────
 
 
 def get_config(key: str, default: str = "") -> str:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT value FROM config WHERE key = ?", (key,))
-    row = cur.fetchone()
-    conn.close()
-    return row["value"] if row else default
+    with SessionLocal() as session:
+        cfg = session.get(Config, key)
+        return cfg.value if cfg else default
 
 
 def set_config(key: str, value: str) -> None:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        cfg = session.get(Config, key)
+        if cfg:
+            cfg.value = value
+        else:
+            session.add(Config(key=key, value=value))
+        session.commit()
 
 
 def list_config() -> dict[str, str]:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT key, value FROM config ORDER BY key")
-    rows = cur.fetchall()
-    conn.close()
-    return {r["key"]: r["value"] for r in rows}
+    with SessionLocal() as session:
+        rows = session.scalars(select(Config).order_by(Config.key)).all()
+        return {row.key: row.value for row in rows}
 
 
 def delete_config(key: str) -> bool:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM config WHERE key = ?", (key,))
-    deleted = cur.rowcount > 0
-    conn.commit()
-    conn.close()
-    return deleted
+    with SessionLocal() as session:
+        cfg = session.get(Config, key)
+        if cfg is None:
+            return False
+        session.delete(cfg)
+        session.commit()
+    return True

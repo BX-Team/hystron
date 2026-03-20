@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
-from app.database import get_config, get_db, get_traffic, list_hosts, register_device
+from app.database import get_config, get_traffic, get_user_by_sid, list_hosts, register_device
 from app.utils.sub import (
     build_browser_ctx,
     build_clash,
@@ -80,11 +80,7 @@ def _get_base_url(request: Request) -> str:
 @router.head(f"{SUBSCRIPTION_PATH}/{{sid}}")
 @router.get(f"{SUBSCRIPTION_PATH}/{{sid}}")
 async def subscription(sid: str, request: Request):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE sid = ?", (sid,))
-    user = cur.fetchone()
-    conn.close()
+    user = get_user_by_sid(sid)
 
     if not user:
         return Response(status_code=404)

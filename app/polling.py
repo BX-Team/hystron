@@ -3,7 +3,15 @@ from datetime import datetime, timezone
 
 import httpx
 
-from .database import edit_user, get_config, get_db, get_traffic, get_user, list_hosts
+from .database import (
+    edit_user,
+    get_config,
+    get_traffic,
+    get_user,
+    list_hosts,
+    record_traffic_batch,
+    reset_traffic_limited_users,
+)
 
 _last_reset_date = None
 
@@ -16,12 +24,7 @@ async def reset_daily_limits():
 
     if _last_reset_date != current_date and now.hour == 0 and now.minute < 10:
         try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute("UPDATE users SET active = 1 WHERE active = 0 AND traffic_limit > 0")
-            count = cur.rowcount
-            conn.commit()
-            conn.close()
+            count = reset_traffic_limited_users()
             if count > 0:
                 print(f"Daily reset: reactivated {count} users at {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
             _last_reset_date = current_date
@@ -63,17 +66,13 @@ async def poll_hysteria():
                     r = await client.get(f"{api_address}/traffic", headers=headers)
                     if r.status_code == 200:
                         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                        conn = get_db()
-                        cur = conn.cursor()
-                        for username, stats in r.json().items():
-                            tx, rx = stats.get("tx", 0), stats.get("rx", 0)
-                            if tx or rx:
-                                cur.execute(
-                                    "INSERT INTO traffic (ts, server, username, tx, rx) VALUES (?, ?, ?, ?, ?)",
-                                    (ts, address, username, tx, rx),
-                                )
-                        conn.commit()
-                        conn.close()
+                        entries = [
+                            (ts, address, username, stats.get("tx", 0), stats.get("rx", 0))
+                            for username, stats in r.json().items()
+                            if stats.get("tx", 0) or stats.get("rx", 0)
+                        ]
+                        if entries:
+                            record_traffic_batch(entries)
                         await client.get(f"{api_address}/traffic?clear=1", headers=headers)
 
                         for username in r.json().keys():
