@@ -1,5 +1,4 @@
 import secrets
-import time
 import uuid
 
 from sqlalchemy import delete, func, select, text, update
@@ -16,9 +15,6 @@ _CONFIG_DEFAULTS = {
     "announce": "",
     "announce-url": "",
     "subscription_path": "/sub",
-    "whitelist_enable": "false",
-    "whitelist": "",
-    "forbidden_domains": "",
     # Template overrides: directory and per-format paths.
     # Per-format paths take precedence over templates_dir.
     # If empty, falls back to templates_dir/<filename>, then bundled template.
@@ -164,44 +160,6 @@ def delete_user(username: str) -> bool:
         session.delete(user)
         session.commit()
     return True
-
-
-# ── auth ──────────────────────────────────────────────────────────────────────
-
-
-def check_auth(username: str, password: str) -> tuple[bool, str]:
-    """
-    Validates user credentials and checks limits.
-    Returns (ok, reason) — reason is "" if ok, otherwise "invalid"/"inactive"/"expired"/"overlimit".
-    """
-    with SessionLocal() as session:
-        row = (
-            session.execute(
-                text("""
-                SELECT u.active, u.traffic_limit, u.expires_at,
-                       COALESCE(SUM(CASE WHEN t.ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')
-                                         THEN t.tx + t.rx ELSE 0 END), 0) AS total_traffic
-                FROM users u
-                LEFT JOIN traffic t ON t.username = u.username
-                WHERE u.username = :username AND u.password = :password
-                GROUP BY u.username
-            """),
-                {"username": username, "password": password},
-            )
-            .mappings()
-            .one_or_none()
-        )
-
-    if not row:
-        return False, "invalid"
-    if not row["active"]:
-        return False, "inactive"
-    if row["expires_at"] and row["expires_at"] < int(time.time()):
-        return False, "expired"
-    if row["traffic_limit"] > 0 and row["total_traffic"] >= row["traffic_limit"]:
-        return False, "overlimit"
-
-    return True, ""
 
 
 # ── devices ───────────────────────────────────────────────────────────────────
@@ -381,9 +339,13 @@ def host_exists(address: str) -> bool:
 def create_host(
     address: str,
     name: str,
-    api_address: str,
-    api_secret: str,
+    grpc_address: str,
     *,
+    protocol: str = "vless_reality",
+    inbound_tag: str = "",
+    sni: str = "",
+    reality_public_key: str = "",
+    reality_short_id: str = "",
     port: int = 443,
     active: bool = True,
 ) -> dict | None:
@@ -395,8 +357,12 @@ def create_host(
                 address=address,
                 name=name,
                 port=port,
-                api_address=api_address,
-                api_secret=api_secret,
+                grpc_address=grpc_address,
+                protocol=protocol,
+                inbound_tag=inbound_tag,
+                sni=sni,
+                reality_public_key=reality_public_key,
+                reality_short_id=reality_short_id,
                 active=int(active),
             )
         )
@@ -405,8 +371,12 @@ def create_host(
         "address": address,
         "name": name,
         "port": port,
-        "api_address": api_address,
-        "api_secret": api_secret,
+        "grpc_address": grpc_address,
+        "protocol": protocol,
+        "inbound_tag": inbound_tag,
+        "sni": sni,
+        "reality_public_key": reality_public_key,
+        "reality_short_id": reality_short_id,
         "active": active,
     }
 
@@ -416,8 +386,12 @@ def edit_host(
     *,
     name: str | None = None,
     port: int | None = None,
-    api_address: str | None = None,
-    api_secret: str | None = None,
+    grpc_address: str | None = None,
+    protocol: str | None = None,
+    inbound_tag: str | None = None,
+    sni: str | None = None,
+    reality_public_key: str | None = None,
+    reality_short_id: str | None = None,
     active: bool | None = None,
 ) -> bool:
     with SessionLocal() as session:
@@ -428,10 +402,18 @@ def edit_host(
             host.name = name
         if port is not None:
             host.port = port
-        if api_address is not None:
-            host.api_address = api_address
-        if api_secret is not None:
-            host.api_secret = api_secret
+        if grpc_address is not None:
+            host.grpc_address = grpc_address
+        if protocol is not None:
+            host.protocol = protocol
+        if inbound_tag is not None:
+            host.inbound_tag = inbound_tag
+        if sni is not None:
+            host.sni = sni
+        if reality_public_key is not None:
+            host.reality_public_key = reality_public_key
+        if reality_short_id is not None:
+            host.reality_short_id = reality_short_id
         if active is not None:
             host.active = int(active)
         session.commit()

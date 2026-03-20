@@ -1,6 +1,5 @@
 import re
 
-import httpx
 import jinja2
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
@@ -46,20 +45,27 @@ _BROWSER_KW = (
 
 @router.get("/hosts/status", include_in_schema=False)
 async def hosts_status():
-    """Return online/offline status for each active host (checked via their internal API)."""
+    """Return online/offline status for each active host (checked via xray gRPC)."""
+    from app.xray.client import query_traffic
+
     hosts = list_hosts(active_only=True)
-    result = {}
-    async with httpx.AsyncClient(timeout=3) as client:
-        for h in hosts:
-            api_url = h["api_address"].rstrip("/")
+    result: dict[str, str] = {}
+    seen_grpc: set[str] = set()
+    grpc_status: dict[str, str] = {}
+
+    for h in hosts:
+        grpc_address = h.get("grpc_address", "")
+        if not grpc_address:
+            result[h["address"]] = "offline"
+            continue
+        if grpc_address not in seen_grpc:
+            seen_grpc.add(grpc_address)
             try:
-                r = await client.get(
-                    f"{api_url}/traffic",
-                    headers={"Authorization": h["api_secret"]},
-                )
-                result[h["address"]] = "online" if r.status_code == 200 else "offline"
+                await query_traffic(grpc_address, reset=False, timeout=3)
+                grpc_status[grpc_address] = "online"
             except Exception:
-                result[h["address"]] = "offline"
+                grpc_status[grpc_address] = "offline"
+        result[h["address"]] = grpc_status.get(grpc_address, "offline")
     return result
 
 

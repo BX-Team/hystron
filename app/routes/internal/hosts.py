@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter
@@ -21,8 +22,12 @@ router = APIRouter(prefix="/api", tags=["Hosts"])
 class CreateBody(BaseModel):
     address: str
     name: str
-    api_address: str
-    api_secret: str
+    grpc_address: str
+    protocol: str = "vless_reality"  # "vless_reality" | "trojan" | "hysteria2"
+    inbound_tag: str = ""
+    sni: str = ""
+    reality_public_key: str = ""
+    reality_short_id: str = ""
     port: int = 443
     active: bool = True
     tags: list[str] = []
@@ -31,8 +36,12 @@ class CreateBody(BaseModel):
 class EditBody(BaseModel):
     name: Optional[str] = None
     port: Optional[int] = None
-    api_address: Optional[str] = None
-    api_secret: Optional[str] = None
+    grpc_address: Optional[str] = None
+    protocol: Optional[str] = None
+    inbound_tag: Optional[str] = None
+    sni: Optional[str] = None
+    reality_public_key: Optional[str] = None
+    reality_short_id: Optional[str] = None
     active: Optional[bool] = None
     tags: Optional[list[str]] = None
 
@@ -43,8 +52,12 @@ def _row_to_dict(row) -> dict:
         "address": address,
         "name": row["name"],
         "port": row["port"],
-        "api_address": row["api_address"],
-        "api_secret": row["api_secret"],
+        "grpc_address": row["grpc_address"],
+        "protocol": row["protocol"],
+        "inbound_tag": row["inbound_tag"],
+        "sni": row["sni"],
+        "reality_public_key": row["reality_public_key"],
+        "reality_short_id": row["reality_short_id"],
         "active": bool(row["active"]),
         "tags": get_host_tags(address),
     }
@@ -56,15 +69,19 @@ def hosts_list():
 
 
 @router.post("/hosts", status_code=201)
-def hosts_create(body: CreateBody):
+async def hosts_create(body: CreateBody):
     address = body.address.strip()
     if not address:
         return JSONResponse({"error": "address required"}, status_code=400)
     result = create_host(
         address,
         body.name,
-        body.api_address,
-        body.api_secret,
+        body.grpc_address,
+        protocol=body.protocol,
+        inbound_tag=body.inbound_tag,
+        sni=body.sni,
+        reality_public_key=body.reality_public_key,
+        reality_short_id=body.reality_short_id,
         port=body.port,
         active=body.active,
     )
@@ -73,6 +90,12 @@ def hosts_create(body: CreateBody):
     if body.tags:
         set_host_tags(address, body.tags)
     result["tags"] = get_host_tags(address)
+
+    # Push all active users to the new host in the background
+    from app.xray.sync import sync_new_host
+
+    asyncio.create_task(sync_new_host(result))
+
     return result
 
 
@@ -92,8 +115,12 @@ def hosts_edit(address: str, body: EditBody):
         address,
         name=body.name,
         port=body.port,
-        api_address=body.api_address,
-        api_secret=body.api_secret,
+        grpc_address=body.grpc_address,
+        protocol=body.protocol,
+        inbound_tag=body.inbound_tag,
+        sni=body.sni,
+        reality_public_key=body.reality_public_key,
+        reality_short_id=body.reality_short_id,
         active=body.active,
     )
     if body.tags is not None:

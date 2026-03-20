@@ -52,10 +52,39 @@ def get_templates_search_dirs() -> list[str]:
     return dirs
 
 
+def _make_uri(host: dict, pwd: str) -> str:
+    """Build a share URI for the given host and user password/UUID."""
+    proto = host.get("protocol", "hysteria2")
+    name = urllib.parse.quote(host["name"])
+
+    if proto == "vless_reality":
+        params = urllib.parse.urlencode(
+            {
+                "encryption": "none",
+                "security": "reality",
+                "sni": host.get("sni", host["address"]),
+                "fp": "chrome",
+                "pbk": host.get("reality_public_key", ""),
+                "sid": host.get("reality_short_id", ""),
+                "type": "tcp",
+                "flow": "xtls-rprx-vision",
+            }
+        )
+        return f"vless://{pwd}@{host['address']}:{host['port']}?{params}#{name}"
+
+    elif proto == "trojan":
+        sni = host.get("sni", host["address"])
+        return f"trojan://{pwd}@{host['address']}:{host['port']}?security=tls&sni={sni}#{name}"
+
+    else:  # hysteria2
+        sni = host.get("sni", host["address"])
+        return f"hysteria2://{pwd}@{host['address']}:{host['port']}?sni={sni}#{name}"
+
+
 def make_links(uname: str, pwd: str) -> list[dict]:
     return [
         {
-            "uri": f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
+            "uri": _make_uri(h, pwd),
             "label": h["name"],
             "host": h["address"],
         }
@@ -101,22 +130,56 @@ def make_base_headers(
     return title_b64, headers
 
 
+def _singbox_outbound(host: dict, pwd: str) -> dict:
+    proto = host.get("protocol", "hysteria2")
+    sni = host.get("sni", host["address"])
+
+    if proto == "vless_reality":
+        return {
+            "type": "vless",
+            "tag": host["name"],
+            "server": host["address"],
+            "server_port": host["port"],
+            "uuid": pwd,
+            "flow": "xtls-rprx-vision",
+            "tls": {
+                "enabled": True,
+                "server_name": sni,
+                "utls": {"enabled": True, "fingerprint": "chrome"},
+                "reality": {
+                    "enabled": True,
+                    "public_key": host.get("reality_public_key", ""),
+                    "short_id": host.get("reality_short_id", ""),
+                },
+            },
+        }
+    elif proto == "trojan":
+        return {
+            "type": "trojan",
+            "tag": host["name"],
+            "server": host["address"],
+            "server_port": host["port"],
+            "password": pwd,
+            "tls": {"enabled": True, "server_name": sni},
+        }
+    else:  # hysteria2
+        return {
+            "type": "hysteria2",
+            "tag": host["name"],
+            "server": host["address"],
+            "server_port": host["port"],
+            "password": pwd,
+            "tls": {"enabled": True, "server_name": sni},
+        }
+
+
 def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
     config = json.load(open(get_template_file("singbox.json")))
     proxy_names = []
     for h in hosts:
         proxy_names.append(h["name"])
-        config["outbounds"].append(
-            {
-                "type": "hysteria2",
-                "tag": h["name"],
-                "server": h["address"],
-                "server_port": h["port"],
-                "password": f"{uname}:{pwd}",
-                "tls": {"enabled": True, "server_name": h["address"]},
-            }
-        )
+        config["outbounds"].append(_singbox_outbound(h, pwd))
     config["outbounds"][0]["outbounds"] = proxy_names
     return PlainTextResponse(
         json.dumps(config, indent=4, ensure_ascii=False),
@@ -125,17 +188,52 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
     )
 
 
+def _clash_proxy_entry(host: dict, pwd: str) -> str:
+    proto = host.get("protocol", "hysteria2")
+    sni = host.get("sni", host["address"])
+    name = host["name"]
+    addr = host["address"]
+    port = host["port"]
+
+    if proto == "vless_reality":
+        return (
+            f"  - name: {name}\n"
+            f"    type: vless\n"
+            f"    server: {addr}\n"
+            f"    port: {port}\n"
+            f"    uuid: {pwd}\n"
+            f"    network: tcp\n"
+            f"    flow: xtls-rprx-vision\n"
+            f"    tls: true\n"
+            f"    servername: {sni}\n"
+            f"    reality-opts:\n"
+            f"      public-key: \"{host.get('reality_public_key', '')}\"\n"
+            f"      short-id: \"{host.get('reality_short_id', '')}\"\n"
+            f"    client-fingerprint: chrome\n"
+        )
+    elif proto == "trojan":
+        return (
+            f"  - name: {name}\n"
+            f"    type: trojan\n"
+            f"    server: {addr}\n"
+            f"    port: {port}\n"
+            f"    password: {pwd}\n"
+            f"    sni: {sni}\n"
+        )
+    else:  # hysteria2
+        return (
+            f"  - name: {name}\n"
+            f"    type: hysteria2\n"
+            f"    server: {addr}\n"
+            f"    port: {port}\n"
+            f"    password: {pwd}\n"
+            f"    sni: {sni}\n"
+        )
+
+
 def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
-    proxies_yaml = "".join(
-        f"  - name: {h['name']}\n"
-        f"    type: hysteria2\n"
-        f"    server: {h['address']}\n"
-        f"    port: {h['port']}\n"
-        f"    password: {uname}:{pwd}\n"
-        f"    skip-cert-verify: true\n"
-        for h in hosts
-    )
+    proxies_yaml = "".join(_clash_proxy_entry(h, pwd) for h in hosts)
     proxy_names_yaml = "\n      - ".join(h["name"] for h in hosts)
     template = open(get_template_file("clash.yaml")).read()
     return PlainTextResponse(
@@ -146,50 +244,13 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
 
 
 def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
-    hosts = list_hosts_for_user(uname, active_only=True)
-    configs = []
-    for h in hosts:
-        config = json.load(open(get_template_file("xray.json")))
-        config["remarks"] = h["name"]
-        config["outbounds"].insert(
-            0,
-            {
-                "tag": "proxy",
-                "protocol": "hysteria",
-                "settings": {
-                    "version": 2,
-                    "address": h["address"],
-                    "port": h["port"],
-                },
-                "streamSettings": {
-                    "network": "hysteria",
-                    "hysteriaSettings": {
-                        "version": 2,
-                        "auth": f"{uname}:{pwd}",
-                    },
-                    "security": "tls",
-                    "tlsSettings": {
-                        "serverName": h["address"],
-                        "allowInsecure": True,
-                        "alpn": ["h3"],
-                    },
-                },
-            },
-        )
-        configs.append(config)
-
-    return PlainTextResponse(
-        json.dumps(configs, indent=2, ensure_ascii=False),
-        media_type="application/json",
-        headers=base_headers,
-    )
+    """V2RayNG and similar clients accept a base64-encoded list of share URIs."""
+    return build_plain(uname, pwd, base_headers)
 
 
 def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
-    body = "\n".join(
-        f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}" for h in hosts
-    )
+    body = "\n".join(_make_uri(h, pwd) for h in hosts)
     return PlainTextResponse(
         base64.b64encode(body.encode()).decode(),
         headers=base_headers,

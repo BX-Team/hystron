@@ -1,0 +1,22 @@
+services:
+  xray-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    image: ghcr.io/bx-team/hystron-node:${HYSTRON_VERSION:-latest}
+    container_name: xray-node
+    restart: unless-stopped
+    ports:
+      - "${PROXY_PORT:-443}:443/tcp"
+      - "${PROXY_PORT:-443}:443/udp"
+      # WARNING: Do NOT expose 10085 to the public internet.
+      # Use a private Docker network or firewall rules to restrict access
+      # to the Hystron panel only.
+      - "127.0.0.1:${GRPC_PORT:-10085}:10085"
+    volumes:
+      # Mount your xray config template here (read-only)
+      - /etc/xray:/etc/xray:ro
+    environment:
+      - XRAY_CONFIG_TEMPLATE=/etc/xray/config.json
+      - XRAY_API_HOST=0.0.0.0
+      - XRAY_API_PORT=${GRPC_PORT:-10085}

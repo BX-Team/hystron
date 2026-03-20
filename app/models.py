@@ -51,8 +51,13 @@ class Host(Base):
     address: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     port: Mapped[int] = mapped_column(Integer, nullable=False, default=443)
-    api_address: Mapped[str] = mapped_column(Text, nullable=False)
-    api_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    grpc_address: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # "vless_reality" | "trojan" | "hysteria2"
+    protocol: Mapped[str] = mapped_column(Text, nullable=False, default="vless_reality")
+    inbound_tag: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sni: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reality_public_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reality_short_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
     active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 

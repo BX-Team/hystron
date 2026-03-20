@@ -1,23 +1,24 @@
 import asyncio
 from datetime import datetime, timezone
 
-import httpx
-
-from .database import (
+from app.database import (
     edit_user,
     get_config,
     get_traffic,
     get_user,
     list_hosts,
+    list_users,
     record_traffic_batch,
     reset_traffic_limited_users,
 )
+from app.xray.client import query_traffic
+from app.xray.sync import sync_user_to_all_hosts
 
 _last_reset_date = None
 
 
-async def reset_daily_limits():
-    """Reset user active status at the start of each day (00:00 UTC)."""
+async def _maybe_reset_daily_limits() -> None:
+    """Reactivate traffic-limited users at midnight UTC and re-add them to xray nodes."""
     global _last_reset_date
     now = datetime.now(timezone.utc)
     current_date = now.date()
@@ -27,67 +28,65 @@ async def reset_daily_limits():
             count = reset_traffic_limited_users()
             if count > 0:
                 print(f"Daily reset: reactivated {count} users at {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+                # Re-add reactivated users to all nodes
+                for user in list_users():
+                    if user["active"] and user["traffic_limit"] > 0:
+                        asyncio.create_task(
+                            sync_user_to_all_hosts(user["username"], user["password"], active=True)
+                        )
             _last_reset_date = current_date
         except Exception as e:
             print(f"Error during daily reset: {e}")
 
 
-async def poll_hysteria():
-    async with httpx.AsyncClient(timeout=10) as client:
-        while True:
-            await reset_daily_limits()
-            forbidden_raw = get_config("forbidden_domains", "")
-            forbidden = [d.strip() for d in forbidden_raw.split(",") if d.strip()]
+async def poll_xray() -> None:
+    while True:
+        await _maybe_reset_daily_limits()
 
-            for host in list_hosts(active_only=True):
-                address = host["address"]
-                api_address = host["api_address"].rstrip("/")
-                api_secret = host["api_secret"]
-                headers = {"Authorization": api_secret}
+        # Deduplicate grpc_address: one xray node may appear as multiple hosts
+        seen_grpc: set[str] = set()
 
-                if forbidden:
-                    try:
-                        r = await client.get(f"{api_address}/dump/streams", headers=headers)
-                        if r.status_code == 200:
-                            offenders: dict[str, list[str]] = {}
-                            for stream in r.json().get("streams", []):
-                                addr = stream.get("hooked_req_addr") or stream.get("req_addr", "")
-                                domain = addr.split(":")[0]
-                                auth = stream.get("auth", "")
-                                for fd in forbidden:
-                                    if domain == fd or domain.endswith("." + fd):
-                                        offenders.setdefault(auth, []).append(domain)
-                            for user, domains in offenders.items():
-                                print(f"forbidden: {address} / {user}: {', '.join(sorted(set(domains)))}")
-                    except Exception as e:
-                        print(f"error streams {address}: {e}")
+        for host in list_hosts(active_only=True):
+            grpc_address = host.get("grpc_address", "")
+            if not grpc_address or grpc_address in seen_grpc:
+                continue
+            seen_grpc.add(grpc_address)
 
+            try:
+                traffic_map = await query_traffic(grpc_address, reset=True)
+            except Exception as e:
+                print(f"error polling {host['address']} ({grpc_address}): {e}")
+                continue
+
+            if not traffic_map:
+                continue
+
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            entries = [
+                (ts, host["address"], username, stats["tx"], stats["rx"])
+                for username, stats in traffic_map.items()
+                if stats["tx"] or stats["rx"]
+            ]
+            if entries:
+                record_traffic_batch(entries)
+
+            for username in traffic_map:
                 try:
-                    r = await client.get(f"{api_address}/traffic", headers=headers)
-                    if r.status_code == 200:
-                        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                        entries = [
-                            (ts, address, username, stats.get("tx", 0), stats.get("rx", 0))
-                            for username, stats in r.json().items()
-                            if stats.get("tx", 0) or stats.get("rx", 0)
-                        ]
-                        if entries:
-                            record_traffic_batch(entries)
-                        await client.get(f"{api_address}/traffic?clear=1", headers=headers)
-
-                        for username in r.json().keys():
-                            try:
-                                user = get_user(username)
-                                if user and user["traffic_limit"] > 0:
-                                    total = get_traffic(username)
-                                    if total and total[0]["day"] >= user["traffic_limit"]:
-                                        edit_user(username, active=False)
-                                        await client.post(f"{api_address}/kick", json={"id": username}, headers=headers)
-                                        print(f"kicked {username} on {address}: daily traffic limit exceeded")
-                            except Exception as e:
-                                print(f"error checking limit for {username} on {address}: {e}")
+                    user = get_user(username)
+                    if not user or user["traffic_limit"] <= 0:
+                        continue
+                    traffic = get_traffic(username)
+                    if not traffic:
+                        continue
+                    day_usage = traffic[0]["day"]
+                    if day_usage >= user["traffic_limit"]:
+                        edit_user(username, active=False)
+                        asyncio.create_task(
+                            sync_user_to_all_hosts(username, user["password"], active=False)
+                        )
+                        print(f"deactivated {username}: daily traffic limit exceeded ({day_usage} >= {user['traffic_limit']})")
                 except Exception as e:
-                    print(f"error traffic {address}: {e}")
+                    print(f"error checking limit for {username}: {e}")
 
-            poll_interval = int(get_config("poll_interval", "600"))
-            await asyncio.sleep(poll_interval)
+        poll_interval = int(get_config("poll_interval", "600"))
+        await asyncio.sleep(poll_interval)

@@ -35,6 +35,8 @@ dependencies = [
   "textual[syntax]>=2.1.2",
   "typer>=0.24.1",
   "qrcode>=8.0",
+  "grpcio>=1.78.0",
+  "protobuf>=4.25.0",
 ]
 
 [tool.ruff]
@@ -62,4 +64,5 @@ reportOptionalMemberAccess = false
 [dependency-groups]
 dev = [
   "ruff>=0.11.6",
+  "grpcio-tools>=1.78.0",
 ]

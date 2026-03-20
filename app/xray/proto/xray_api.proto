@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package xray_api;
+
+// ── HandlerService ──────────────────────────────────────────────────────────
+
+service HandlerService {
+  rpc AlterInbound(AlterInboundRequest) returns (AlterInboundResponse);
+}
+
+message AlterInboundRequest {
+  string tag = 1;
+  TypedMessage operation = 2;
+}
+
+message AlterInboundResponse {}
+
+// ── StatsService ─────────────────────────────────────────────────────────────
+
+service StatsService {
+  rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse);
+}
+
+message QueryStatsRequest {
+  string pattern = 1;
+  bool reset = 2;
+}
+
+message QueryStatsResponse {
+  repeated Stat stat = 1;
+}
+
+message Stat {
+  string name = 1;
+  int64 value = 2;
+}
+
+// ── Shared ────────────────────────────────────────────────────────────────────
+
+// Wire-compatible with xray.common.serial.TypedMessage
+message TypedMessage {
+  string type = 1;
+  bytes value = 2;
+}
+
+// Wire-compatible with xray.common.protocol.User
+message User {
+  uint32 level = 1;
+  string email = 2;
+  TypedMessage account = 3;
+}
+
+// ── Operations ───────────────────────────────────────────────────────────────
+
+// Wire-compatible with xray.app.proxyman.command.AddUserOperation
+message AddUserOperation {
+  User user = 1;
+}
+
+// Wire-compatible with xray.app.proxyman.command.RemoveUserOperation
+message RemoveUserOperation {
+  string email = 1;
+}
+
+// ── Account types (wire-compatible with xray proxy accounts) ─────────────────
+
+// xray.proxy.vless.Account — only fields we use
+message VlessAccount {
+  string id = 1;
+  // fields 2-4 omitted (encryption, flow for older versions, etc.)
+  string flow = 5;
+}
+
+// xray.proxy.trojan.Account
+message TrojanAccount {
+  string password = 1;
+}
+
+// xray.proxy.hysteria2.Account
+message Hy2Account {
+  string password = 1;
+}
