@@ -47,6 +47,33 @@ install_docker() {
     info "Docker installed: $(docker --version)"
 }
 
+# ── mode selection ────────────────────────────────────────────────────────────
+choose_mode() {
+    echo ""
+    echo "Select installation mode:"
+    echo "  1) control  — full panel (TUI/CLI, user management, subscriptions)"
+    echo "  2) node     — xray-core agent (connects to a Control server)"
+    echo ""
+    read -rp "Mode [1-2] (default: 1): " mode_choice
+    case "${mode_choice:-1}" in
+        1) HYSTRON_MODE="control" ;;
+        2) HYSTRON_MODE="node" ;;
+        *) warn "Invalid choice, using control mode."; HYSTRON_MODE="control" ;;
+    esac
+    info "Mode: ${HYSTRON_MODE}"
+}
+
+# ── node config ───────────────────────────────────────────────────────────────
+choose_node_config() {
+    echo ""
+    info "Node mode: this server will connect to a Control server and run xray-core."
+    echo ""
+    read -rp "Control URL (e.g. http://ctrl.example.com:9002): " HYSTRON_CONTROL_URL
+    [[ -z "${HYSTRON_CONTROL_URL:-}" ]] && error "Control URL is required for node mode."
+    read -rp "Node token (from Control: hystron nodes create <address>): " HYSTRON_NODE_TOKEN
+    [[ -z "${HYSTRON_NODE_TOKEN:-}" ]] && error "Node token is required for node mode."
+}
+
 # ── version selection ─────────────────────────────────────────────────────────
 choose_version() {
     echo ""
@@ -68,13 +95,15 @@ choose_version() {
     info "Using image: ${IMAGE_NAME}:${HYSTRON_VERSION}"
 }
 
-# ── port selection ────────────────────────────────────────────────────────────
+# ── port selection (control only) ─────────────────────────────────────────────
 choose_ports() {
     echo ""
     read -rp "Public (auth/subscription) port [9000]: " PUBLIC_PORT
     PUBLIC_PORT="${PUBLIC_PORT:-9000}"
     read -rp "Internal (admin API) port [9001]: " INTERNAL_PORT
     INTERNAL_PORT="${INTERNAL_PORT:-9001}"
+    read -rp "Node API port [9002]: " NODE_API_PORT
+    NODE_API_PORT="${NODE_API_PORT:-9002}"
 }
 
 # ── .env generation ───────────────────────────────────────────────────────────
@@ -86,14 +115,33 @@ setup_env() {
     fi
 
     info "Generating .env..."
-    cat > "$env_file" <<EOF
+
+    if [[ "${HYSTRON_MODE}" == "control" ]]; then
+        cat > "$env_file" <<EOF
 HYSTRON_VERSION=${HYSTRON_VERSION:-latest}
+HYSTRON_MODE=control
 
 PUBLIC_PORT=${PUBLIC_PORT:-9000}
 INTERNAL_PORT=${INTERNAL_PORT:-9001}
+NODE_API_PORT=${NODE_API_PORT:-9002}
 
 HYST_DB_PATH=/var/lib/hystron/app.db
 EOF
+    else
+        cat > "$env_file" <<EOF
+HYSTRON_VERSION=${HYSTRON_VERSION:-latest}
+HYSTRON_MODE=node
+
+HYSTRON_CONTROL_URL=${HYSTRON_CONTROL_URL:-}
+HYSTRON_NODE_TOKEN=${HYSTRON_NODE_TOKEN:-}
+
+# Path to your hand-crafted xray-core config template (with "clients": [])
+XRAY_TEMPLATE_PATH=/var/lib/hystron/xray-template.json
+# Path where the panel writes the final config (with clients filled in)
+XRAY_CONFIG_PATH=/var/lib/hystron/xray.json
+EOF
+    fi
+
     chmod 600 "$env_file"
     info ".env created at ${env_file}"
 }
@@ -107,7 +155,7 @@ fetch_compose() {
     info "docker-compose.yml downloaded."
 }
 
-# ── cli install ──────────────────────────────────────────────────────────────
+# ── cli install (control only) ────────────────────────────────────────────────
 install_cli() {
     local cli_venv="${INSTALL_DIR}/.cli-venv"
     local cli_dir="${INSTALL_DIR}/cli"
@@ -167,38 +215,66 @@ do_install() {
     detect_compose
     [[ -z "$COMPOSE_CMD" ]] && error "Docker Compose not found. Please install Docker with Compose support."
 
+    choose_mode
     fetch_compose
     choose_version
-    choose_ports
+
+    if [[ "${HYSTRON_MODE}" == "control" ]]; then
+        choose_ports
+    else
+        choose_node_config
+    fi
+
     setup_env
 
     info "Preparing data directory ${DATA_DIR}..."
-    mkdir -p "${DATA_DIR}/templates"
+    mkdir -p "${DATA_DIR}/templates" "${DATA_DIR}/tls"
 
     info "Pulling image ${IMAGE_NAME}:${HYSTRON_VERSION}..."
     docker pull "${IMAGE_NAME}:${HYSTRON_VERSION}"
 
-    info "Starting Hystron..."
+    info "Starting Hystron (${HYSTRON_MODE} mode)..."
     $COMPOSE_CMD -f "${INSTALL_DIR}/docker-compose.yml" --env-file "${INSTALL_DIR}/.env" up -d
 
     echo "${HYSTRON_VERSION}" > "${INSTALL_DIR}/.hystron_version"
+    echo "${HYSTRON_MODE}" > "${INSTALL_DIR}/.hystron_mode"
 
-    install_cli
+    if [[ "${HYSTRON_MODE}" == "control" ]]; then
+        install_cli
 
-    local server_ip
-    server_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}') \
-        || server_ip=$(hostname -I 2>/dev/null | awk '{print $1}') \
-        || server_ip="localhost"
+        local server_ip
+        server_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}') \
+            || server_ip=$(hostname -I 2>/dev/null | awk '{print $1}') \
+            || server_ip="localhost"
 
-    echo ""
-    info "=== Installation complete ==="
-    info "  Public  (auth/sub) → http://${server_ip}:${PUBLIC_PORT:-9000}"
-    info "  Internal (API)     → http://127.0.0.1:${INTERNAL_PORT:-9001}"
-    info "  Data dir           → ${DATA_DIR}"
-    info "  Templates override → ${DATA_DIR}/templates"
-    echo ""
-    info "  Manage: hystron --help"
-    info "  Logs:   docker logs -f hystron"
+        echo ""
+        info "=== Control installation complete ==="
+        info "  Public  (auth/sub) → http://${server_ip}:${PUBLIC_PORT:-9000}"
+        info "  Internal (API)     → http://127.0.0.1:${INTERNAL_PORT:-9001}"
+        info "  Node API           → http://${server_ip}:${NODE_API_PORT:-9002}"
+        info "  Data dir           → ${DATA_DIR}"
+        echo ""
+        info "  Next: create a node with:  hystron nodes create <address>"
+        info "  Manage: hystron --help"
+        info "  Logs:   docker logs -f hystron"
+    else
+        echo ""
+        info "=== Node installation complete ==="
+        info "  Control URL  → ${HYSTRON_CONTROL_URL}"
+        info "  Data dir     → ${DATA_DIR}"
+        echo ""
+        warn "  Next step: create your xray-core config template at:"
+        warn "    ${DATA_DIR}/xray-template.json"
+        echo ""
+        info "  The template is a normal xray-core config. Set 'clients: []' in"
+        info "  every inbound — the panel will fill it automatically."
+        info "  All other settings (TLS, Reality, ports, routing) you control."
+        echo ""
+        info "  After creating the template, restart:"
+        info "    docker restart hystron"
+        echo ""
+        info "  Logs: docker logs -f hystron"
+    fi
 }
 
 # ── uninstall ─────────────────────────────────────────────────────────────────
@@ -234,7 +310,10 @@ do_update() {
 
     $COMPOSE_CMD -f "${INSTALL_DIR}/docker-compose.yml" --env-file "${INSTALL_DIR}/.env" up -d
 
-    if [[ -d "${INSTALL_DIR}/cli" ]]; then
+    local saved_mode="control"
+    [[ -f "${INSTALL_DIR}/.hystron_mode" ]] && saved_mode=$(cat "${INSTALL_DIR}/.hystron_mode")
+
+    if [[ "$saved_mode" == "control" && -d "${INSTALL_DIR}/cli" ]]; then
         info "Updating CLI module..."
         local cli_dir="${INSTALL_DIR}/cli"
         for f in __init__.py __main__.py main.py; do

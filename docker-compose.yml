@@ -4,9 +4,16 @@ services:
     container_name: hystron
     restart: unless-stopped
     ports:
-      - "${PUBLIC_PORT:-9000}:9000"
-      - "${INTERNAL_PORT:-9001}:9001"
+      - "${PUBLIC_PORT:-9000}:9000"      # control: auth + subscriptions
+      - "${INTERNAL_PORT:-9001}:9001"    # control: admin API
+      - "${NODE_API_PORT:-9002}:9002"    # control: node-facing API
     volumes:
       - /var/lib/hystron:/var/lib/hystron
     environment:
       - HYST_DB_PATH=/var/lib/hystron/app.db
+      - HYSTRON_MODE=${HYSTRON_MODE:-control}
+      # Node mode
+      - HYSTRON_CONTROL_URL=${HYSTRON_CONTROL_URL:-}
+      - HYSTRON_NODE_TOKEN=${HYSTRON_NODE_TOKEN:-}
+      - XRAY_TEMPLATE_PATH=${XRAY_TEMPLATE_PATH:-/var/lib/hystron/xray-template.json}
+      - XRAY_CONFIG_PATH=${XRAY_CONFIG_PATH:-/var/lib/hystron/xray.json}

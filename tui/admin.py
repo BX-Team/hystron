@@ -144,6 +144,7 @@ class UserQRModal(BaseModal):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         await self.key_escape()
 
+
 # ── modal: user devices ───────────────────────────────────────────────────────
 
 
@@ -222,6 +223,7 @@ class UserDevicesModal(BaseModal):
             await self.action_delete_device()
         elif event.button.id == "close":
             await self.key_escape()
+
 
 # ── modals: users ─────────────────────────────────────────────────────────────
 
@@ -405,16 +407,15 @@ class HostCreateModal(BaseModal):
 
     def compose(self) -> ComposeResult:
         with Container(classes="modal-box"):
-            yield Static("Create host", classes="modal-title")
+            yield Static("Create node", classes="modal-title")
             with Vertical(classes="input-container"):
-                yield Input(placeholder="Address      (e.g. vpn.example.com)", id="address")
-                yield Input(placeholder="Name         (display label)", id="name")
-                yield Input(placeholder="Port         (default 443)", id="port")
+                yield Input(placeholder="Address   (e.g. vpn.example.com)", id="address")
+                yield Input(placeholder="Name      (display label)", id="name")
+                yield Input(placeholder="Port      (default 443)", id="port")
                 yield Input(
-                    placeholder="API address  (e.g. http://127.0.0.1:25413)",
-                    id="api_address",
+                    placeholder="Protocols (default: hysteria2,vless,trojan)",
+                    id="protocols",
                 )
-                yield Input(placeholder="API secret", id="api_secret")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
                     yield Switch(animate=False, id="active", value=True)
@@ -437,19 +438,26 @@ class HostCreateModal(BaseModal):
                 return
             name = self.query_one("#name").value.strip() or address
             port_raw = self.query_one("#port").value.strip()
-            api_address = self.query_one("#api_address").value.strip()
-            api_secret = self.query_one("#api_secret").value.strip()
+            protocols_raw = self.query_one("#protocols").value.strip()
             active = self.query_one("#active").value
             try:
                 port = int(port_raw) if port_raw else 443
             except ValueError:
                 self.notify("Port must be a number", severity="error", title="Error")
                 return
-            result = create_host(address, name, api_address, api_secret, port=port, active=active)
+            protocols = [p.strip() for p in protocols_raw.split(",") if p.strip()] or ["hysteria2"]
+            node_ports = {p: port for p in protocols}
+            result = create_host(address, name, port=port, active=active, protocols=protocols, node_ports=node_ports)
             if result is None:
-                self.notify(f"Host '{address}' already exists", severity="error", title="Error")
+                self.notify(f"Node '{address}' already exists", severity="error", title="Error")
                 return
-            self.notify(f"Host '{address}' created", severity="success", title="Success")
+            token = result.get("node_token", "?")
+            self.notify(
+                f"Node '{address}' created.\nToken: {token}\n(copy to node's .env)",
+                severity="success",
+                title="Success",
+                timeout=15,
+            )
             self.on_close()
         await self.key_escape()
 
@@ -464,12 +472,11 @@ class HostEditModal(BaseModal):
 
     def compose(self) -> ComposeResult:
         with Container(classes="modal-box"):
-            yield Static(f"Edit host '{self.address}'", classes="modal-title")
+            yield Static(f"Edit node '{self.address}'", classes="modal-title")
             with Vertical(classes="input-container"):
-                yield Input(placeholder="Name        (empty = keep)", id="name")
-                yield Input(placeholder="Port        (empty = keep)", id="port")
-                yield Input(placeholder="API address (empty = keep)", id="api_address")
-                yield Input(placeholder="API secret  (empty = keep)", id="api_secret")
+                yield Input(placeholder="Name      (empty = keep)", id="name")
+                yield Input(placeholder="Port      (empty = keep)", id="port")
+                yield Input(placeholder="Protocols (empty = keep, e.g. hysteria2,vless)", id="protocols")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
                     yield Switch(animate=False, id="active", value=True)
@@ -489,25 +496,26 @@ class HostEditModal(BaseModal):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
+            import json as _json
+
             name = self.query_one("#name").value.strip() or None
             port_raw = self.query_one("#port").value.strip()
-            api_address = self.query_one("#api_address").value.strip() or None
-            api_secret = self.query_one("#api_secret").value.strip() or None
+            protocols_raw = self.query_one("#protocols").value.strip()
             active = self.query_one("#active").value
             try:
                 port = int(port_raw) if port_raw else None
             except ValueError:
                 self.notify("Port must be a number", severity="error", title="Error")
                 return
+            protocols = [p.strip() for p in protocols_raw.split(",") if p.strip()] or None
             edit_host(
                 self.address,
                 name=name,
                 port=port,
-                api_address=api_address,
-                api_secret=api_secret,
                 active=active,
+                protocols=protocols,
             )
-            self.notify(f"Host '{self.address}' updated", severity="success", title="Success")
+            self.notify(f"Node '{self.address}' updated", severity="success", title="Success")
             self.on_close()
         await self.key_escape()
 
@@ -523,7 +531,7 @@ class HostDeleteModal(BaseModal):
     def compose(self) -> ComposeResult:
         with Container(classes="modal-box-delete"):
             yield Static(
-                f"Delete host '{self.address}'?\nThis cannot be undone.",
+                f"Delete node '{self.address}'?\nThis cannot be undone.",
                 classes="modal-title",
             )
             with Horizontal(classes="button-row"):
@@ -536,7 +544,7 @@ class HostDeleteModal(BaseModal):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "delete":
             delete_host(self.address)
-            self.notify(f"Host '{self.address}' deleted", severity="success", title="Deleted")
+            self.notify(f"Node '{self.address}' deleted", severity="success", title="Deleted")
             self.on_close()
         await self.key_escape()
 
@@ -824,18 +832,27 @@ class HostsContent(Static):
         self.table.clear(columns=True)
         rows = list_hosts()
         if not rows:
-            self.table.add_columns("  (no hosts — press 'c' to create one)  ")
+            self.table.add_columns("  (no nodes — press 'c' to create one)  ")
             return
 
-        columns = ["#", "Address", "Name", "Port", "Active", "API Address"]
+        import json as _json
+        import time as _time
+
+        _now = int(_time.time())
+        columns = ["#", "Address", "Name", "Port", "Protocols", "Online", "Active"]
         data = [
             [
                 str(idx),
                 r["address"],
                 r["name"],
                 str(r["port"]),
+                ", ".join(
+                    _json.loads(r["protocols"])
+                    if isinstance(r["protocols"], str)
+                    else (r.get("protocols") or ["hysteria2"])
+                ),
+                "\u2714" if (r.get("last_seen", 0) or 0) > _now - 60 else "\u2716",
                 "\u2714" if r["active"] else "\u2716",
-                r["api_address"],
             ]
             for idx, r in enumerate(rows, 1)
         ]

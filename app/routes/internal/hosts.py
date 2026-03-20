@@ -1,3 +1,5 @@
+import json
+import time
 from typing import Optional
 
 from fastapi import APIRouter
@@ -11,6 +13,7 @@ from app.database import (
     get_host,
     host_exists,
     list_hosts,
+    regenerate_node_token,
 )
 
 router = APIRouter(prefix="/api", tags=["Hosts"])
@@ -19,28 +22,38 @@ router = APIRouter(prefix="/api", tags=["Hosts"])
 class CreateBody(BaseModel):
     address: str
     name: str
-    api_address: str
-    api_secret: str
     port: int = 443
     active: bool = True
+    protocols: list[str] = ["hysteria2"]
+    node_ports: dict = {}
 
 
 class EditBody(BaseModel):
     name: Optional[str] = None
     port: Optional[int] = None
-    api_address: Optional[str] = None
-    api_secret: Optional[str] = None
     active: Optional[bool] = None
+    protocols: Optional[list[str]] = None
+    node_ports: Optional[dict] = None
 
 
-def _row_to_dict(row) -> dict:
+def _row_to_dict(row: dict) -> dict:
+    protocols = row.get("protocols", '["hysteria2"]')
+    node_ports = row.get("node_ports", "{}")
+    if isinstance(protocols, str):
+        protocols = json.loads(protocols)
+    if isinstance(node_ports, str):
+        node_ports = json.loads(node_ports)
+    last_seen = row.get("last_seen", 0) or 0
+    online = last_seen > 0 and (int(time.time()) - last_seen) < 60
     return {
         "address": row["address"],
         "name": row["name"],
         "port": row["port"],
-        "api_address": row["api_address"],
-        "api_secret": row["api_secret"],
         "active": bool(row["active"]),
+        "protocols": protocols,
+        "node_ports": node_ports,
+        "last_seen": last_seen,
+        "online": online,
     }
 
 
@@ -54,16 +67,18 @@ def hosts_create(body: CreateBody):
     address = body.address.strip()
     if not address:
         return JSONResponse({"error": "address required"}, status_code=400)
+    node_ports = body.node_ports or {"hysteria2": body.port}
     result = create_host(
         address,
         body.name,
-        body.api_address,
-        body.api_secret,
         port=body.port,
         active=body.active,
+        protocols=body.protocols,
+        node_ports=node_ports,
     )
     if result is None:
         return JSONResponse({"error": "already exists"}, status_code=409)
+    # Return with token so admin can copy it
     return result
 
 
@@ -83,11 +98,19 @@ def hosts_edit(address: str, body: EditBody):
         address,
         name=body.name,
         port=body.port,
-        api_address=body.api_address,
-        api_secret=body.api_secret,
         active=body.active,
+        protocols=body.protocols,
+        node_ports=body.node_ports,
     )
     return _row_to_dict(get_host(address))
+
+
+@router.post("/hosts/{address:path}/token")
+def hosts_regen_token(address: str):
+    token = regenerate_node_token(address)
+    if token is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return {"address": address, "node_token": token}
 
 
 @router.delete("/hosts/{address:path}")
