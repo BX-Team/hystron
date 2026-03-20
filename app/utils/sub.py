@@ -5,7 +5,7 @@ import urllib.parse
 
 from fastapi.responses import PlainTextResponse
 
-from app.database import get_config, list_hosts
+from app.database import get_config, list_hosts_for_user
 
 _BUNDLED_TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates")
 
@@ -59,7 +59,7 @@ def make_links(uname: str, pwd: str) -> list[dict]:
             "label": h["name"],
             "host": h["address"],
         }
-        for h in list_hosts(active_only=True)
+        for h in list_hosts_for_user(uname, active_only=True)
     ]
 
 
@@ -102,7 +102,7 @@ def make_base_headers(
 
 
 def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
-    hosts = list_hosts(active_only=True)
+    hosts = list_hosts_for_user(uname, active_only=True)
     config = json.load(open(get_template_file("singbox.json")))
     proxy_names = []
     for h in hosts:
@@ -126,7 +126,7 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
 
 
 def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
-    hosts = list_hosts(active_only=True)
+    hosts = list_hosts_for_user(uname, active_only=True)
     proxies_yaml = "".join(
         f"  - name: {h['name']}\n"
         f"    type: hysteria2\n"
@@ -146,7 +146,7 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
 
 
 def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
-    hosts = list_hosts(active_only=True)
+    hosts = list_hosts_for_user(uname, active_only=True)
     configs = []
     for h in hosts:
         config = json.load(open(get_template_file("xray.json")))
@@ -186,7 +186,7 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
 
 
 def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
-    hosts = list_hosts(active_only=True)
+    hosts = list_hosts_for_user(uname, active_only=True)
     body = "\n".join(
         f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}" for h in hosts
     )

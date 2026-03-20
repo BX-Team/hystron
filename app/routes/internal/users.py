@@ -10,8 +10,10 @@ from app.database import (
     delete_user,
     edit_user,
     get_user,
+    get_user_tags,
     list_devices,
     list_users_with_traffic,
+    set_user_tags,
     user_exists,
 )
 
@@ -23,6 +25,7 @@ class CreateBody(BaseModel):
     traffic_limit: int = 0  # 0 = unlimited
     expires_at: int = 0  # 0 = never
     device_limit: int = 0  # 0 = unlimited
+    tags: list[str] = []
 
 
 class EditBody(BaseModel):
@@ -32,17 +35,20 @@ class EditBody(BaseModel):
     traffic_limit: Optional[int] = None
     expires_at: Optional[int] = None
     device_limit: Optional[int] = None
+    tags: Optional[list[str]] = None
 
 
 def _row_to_dict(row) -> dict:
+    username = row["username"]
     return {
-        "username": row["username"],
+        "username": username,
         "password": row["password"],
         "sid": row["sid"],
         "active": bool(row["active"]),
         "traffic_limit": row["traffic_limit"],
         "expires_at": row["expires_at"],
         "device_limit": row["device_limit"],
+        "tags": get_user_tags(username),
     }
 
 
@@ -64,6 +70,9 @@ def users_create(body: CreateBody):
     )
     if result is None:
         return JSONResponse({"error": "already exists"}, status_code=409)
+    if body.tags:
+        set_user_tags(username, body.tags)
+    result["tags"] = get_user_tags(username)
     return result
 
 
@@ -88,6 +97,8 @@ def users_edit(username: str, body: EditBody):
         expires_at=body.expires_at,
         device_limit=body.device_limit,
     )
+    if body.tags is not None:
+        set_user_tags(username, body.tags)
     return _row_to_dict(get_user(username))
 
 

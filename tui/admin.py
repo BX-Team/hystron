@@ -36,13 +36,17 @@ from app.database import (
     edit_user,
     get_config,
     get_host,
+    get_host_tags,
     get_traffic,
     get_user,
+    get_user_tags,
     list_config,
     list_devices,
     list_hosts,
     list_users_with_traffic,
     set_config,
+    set_host_tags,
+    set_user_tags,
 )
 from app.utils.sub import fmt_bytes
 from tui import BaseModal
@@ -144,6 +148,7 @@ class UserQRModal(BaseModal):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         await self.key_escape()
 
+
 # ── modal: user devices ───────────────────────────────────────────────────────
 
 
@@ -223,6 +228,7 @@ class UserDevicesModal(BaseModal):
         elif event.button.id == "close":
             await self.key_escape()
 
+
 # ── modals: users ─────────────────────────────────────────────────────────────
 
 
@@ -247,6 +253,7 @@ class UserCreateModal(BaseModal):
                     id="device_limit",
                 )
                 yield Input(placeholder="Expires at unix ts   (0 = never)", id="expires_at")
+                yield Input(placeholder="Tags (comma-separated, e.g. TEST,VIP)", id="tags")
             with Horizontal(classes="button-row"):
                 yield Button("Create", id="create", variant="success")
                 yield Button("Cancel", id="cancel", variant="error")
@@ -267,6 +274,7 @@ class UserCreateModal(BaseModal):
             tl_raw = self.query_one("#traffic_limit").value.strip()
             dl_raw = self.query_one("#device_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
+            tags_raw = self.query_one("#tags").value.strip()
             try:
                 traffic_limit = int(float(tl_raw) * 1024**3) if tl_raw else 0
                 device_limit = int(dl_raw) if dl_raw else 0
@@ -278,9 +286,12 @@ class UserCreateModal(BaseModal):
                     title="Error",
                 )
                 return
+            tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else []
             result = create_user(
                 username, traffic_limit=traffic_limit, expires_at=expires_at, device_limit=device_limit
             )
+            if result is not None and tags:
+                set_user_tags(username, tags)
             if result is None:
                 self.notify(f"User '{username}' already exists", severity="error", title="Error")
                 return
@@ -314,6 +325,7 @@ class UserEditModal(BaseModal):
                 yield Input(placeholder="Traffic limit GB    (empty = keep)", id="traffic_limit")
                 yield Input(placeholder="Device limit        (empty = keep)", id="device_limit")
                 yield Input(placeholder="Expires at unix ts  (empty = keep)", id="expires_at")
+                yield Input(placeholder="Tags (comma-separated, empty = keep)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
                     yield Switch(animate=False, id="active", value=True)
@@ -325,6 +337,9 @@ class UserEditModal(BaseModal):
         row = get_user(self.username)
         if row:
             self.query_one("#active").value = bool(row["active"])
+        existing_tags = get_user_tags(self.username)
+        if existing_tags:
+            self.query_one("#tags").value = ", ".join(existing_tags)
         self.set_focus(self.query_one("#password"))
 
     async def key_enter(self) -> None:
@@ -339,6 +354,7 @@ class UserEditModal(BaseModal):
             tl_raw = self.query_one("#traffic_limit").value.strip()
             dl_raw = self.query_one("#device_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
+            tags_raw = self.query_one("#tags").value.strip()
             try:
                 traffic_limit = int(float(tl_raw) * 1024**3) if tl_raw else None
                 device_limit = int(dl_raw) if dl_raw else None
@@ -359,6 +375,9 @@ class UserEditModal(BaseModal):
                 expires_at=expires_at,
                 device_limit=device_limit,
             )
+            if tags_raw is not None:
+                tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+                set_user_tags(self.username, tags)
             self.notify(f"User '{self.username}' updated", severity="success", title="Success")
             self.on_close()
         await self.key_escape()
@@ -415,6 +434,7 @@ class HostCreateModal(BaseModal):
                     id="api_address",
                 )
                 yield Input(placeholder="API secret", id="api_secret")
+                yield Input(placeholder="Tags (comma-separated, e.g. TEST,VIP)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
                     yield Switch(animate=False, id="active", value=True)
@@ -439,6 +459,7 @@ class HostCreateModal(BaseModal):
             port_raw = self.query_one("#port").value.strip()
             api_address = self.query_one("#api_address").value.strip()
             api_secret = self.query_one("#api_secret").value.strip()
+            tags_raw = self.query_one("#tags").value.strip()
             active = self.query_one("#active").value
             try:
                 port = int(port_raw) if port_raw else 443
@@ -449,6 +470,9 @@ class HostCreateModal(BaseModal):
             if result is None:
                 self.notify(f"Host '{address}' already exists", severity="error", title="Error")
                 return
+            if tags_raw:
+                tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+                set_host_tags(address, tags)
             self.notify(f"Host '{address}' created", severity="success", title="Success")
             self.on_close()
         await self.key_escape()
@@ -470,6 +494,7 @@ class HostEditModal(BaseModal):
                 yield Input(placeholder="Port        (empty = keep)", id="port")
                 yield Input(placeholder="API address (empty = keep)", id="api_address")
                 yield Input(placeholder="API secret  (empty = keep)", id="api_secret")
+                yield Input(placeholder="Tags (comma-separated, empty = keep)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
                     yield Switch(animate=False, id="active", value=True)
@@ -481,6 +506,9 @@ class HostEditModal(BaseModal):
         row = get_host(self.address)
         if row:
             self.query_one("#active").value = bool(row["active"])
+        existing_tags = get_host_tags(self.address)
+        if existing_tags:
+            self.query_one("#tags").value = ", ".join(existing_tags)
         self.set_focus(self.query_one("#name"))
 
     async def key_enter(self) -> None:
@@ -493,6 +521,7 @@ class HostEditModal(BaseModal):
             port_raw = self.query_one("#port").value.strip()
             api_address = self.query_one("#api_address").value.strip() or None
             api_secret = self.query_one("#api_secret").value.strip() or None
+            tags_raw = self.query_one("#tags").value.strip()
             active = self.query_one("#active").value
             try:
                 port = int(port_raw) if port_raw else None
@@ -507,6 +536,9 @@ class HostEditModal(BaseModal):
                 api_secret=api_secret,
                 active=active,
             )
+            if tags_raw is not None:
+                tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+                set_host_tags(self.address, tags)
             self.notify(f"Host '{self.address}' updated", severity="success", title="Success")
             self.on_close()
         await self.key_escape()
@@ -686,6 +718,7 @@ class UsersContent(Static):
             "Devices",
             "Expires At",
             "Total Traffic",
+            "Tags",
             "SID",
         ]
         data = [
@@ -699,6 +732,7 @@ class UsersContent(Static):
                 else f"{r.get('device_count', 0)}/\u221e",
                 _fmt_ts(r["expires_at"]),
                 fmt_bytes(r["total"]),
+                ", ".join(get_user_tags(r["username"])) or "—",
                 r["sid"],
             ]
             for idx, r in enumerate(rows, 1)
@@ -827,7 +861,7 @@ class HostsContent(Static):
             self.table.add_columns("  (no hosts — press 'c' to create one)  ")
             return
 
-        columns = ["#", "Address", "Name", "Port", "Active", "API Address"]
+        columns = ["#", "Address", "Name", "Port", "Active", "Tags", "API Address"]
         data = [
             [
                 str(idx),
@@ -835,6 +869,7 @@ class HostsContent(Static):
                 r["name"],
                 str(r["port"]),
                 "\u2714" if r["active"] else "\u2716",
+                ", ".join(get_host_tags(r["address"])) or "—",
                 r["api_address"],
             ]
             for idx, r in enumerate(rows, 1)

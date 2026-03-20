@@ -9,8 +9,10 @@ from app.database import (
     delete_host,
     edit_host,
     get_host,
+    get_host_tags,
     host_exists,
     list_hosts,
+    set_host_tags,
 )
 
 router = APIRouter(prefix="/api", tags=["Hosts"])
@@ -23,6 +25,7 @@ class CreateBody(BaseModel):
     api_secret: str
     port: int = 443
     active: bool = True
+    tags: list[str] = []
 
 
 class EditBody(BaseModel):
@@ -31,16 +34,19 @@ class EditBody(BaseModel):
     api_address: Optional[str] = None
     api_secret: Optional[str] = None
     active: Optional[bool] = None
+    tags: Optional[list[str]] = None
 
 
 def _row_to_dict(row) -> dict:
+    address = row["address"]
     return {
-        "address": row["address"],
+        "address": address,
         "name": row["name"],
         "port": row["port"],
         "api_address": row["api_address"],
         "api_secret": row["api_secret"],
         "active": bool(row["active"]),
+        "tags": get_host_tags(address),
     }
 
 
@@ -64,6 +70,9 @@ def hosts_create(body: CreateBody):
     )
     if result is None:
         return JSONResponse({"error": "already exists"}, status_code=409)
+    if body.tags:
+        set_host_tags(address, body.tags)
+    result["tags"] = get_host_tags(address)
     return result
 
 
@@ -87,6 +96,8 @@ def hosts_edit(address: str, body: EditBody):
         api_secret=body.api_secret,
         active=body.active,
     )
+    if body.tags is not None:
+        set_host_tags(address, body.tags)
     return _row_to_dict(get_host(address))
 
 

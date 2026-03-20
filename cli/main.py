@@ -32,6 +32,17 @@ def _fmt_bytes(n: int) -> str:
     return f"{n:.1f} PB"
 
 
+def _fmt_tags(tags: list) -> str:
+    return ", ".join(tags) if tags else "—"
+
+
+def _parse_tags(tags_str: Optional[str]) -> Optional[list[str]]:
+    """Parse comma-separated tags string into a list, or None if not provided."""
+    if tags_str is None:
+        return None
+    return [t.strip() for t in tags_str.split(",") if t.strip()]
+
+
 def _api(method: str, path: str, **kwargs: Any) -> Any:
     """Execute an HTTP request against the Hystron internal API."""
     url = f"{API_URL}{path}"
@@ -215,6 +226,7 @@ def users_list():
         "device_limit",
         "expires_at",
         "traffic_total",
+        "tags",
     )
     for u in rows:
         table.add_row(
@@ -226,6 +238,7 @@ def users_list():
             str(u["device_limit"]) if u["device_limit"] else "unlimited",
             str(u["expires_at"]),
             _fmt_bytes(u.get("traffic_total", 0)),
+            _fmt_tags(u.get("tags", [])),
         )
     console.print(table)
 
@@ -236,23 +249,25 @@ def users_create(
     traffic_limit: float = typer.Option(0.0, "--traffic-limit", "-t", help="Traffic limit in GB (0 = unlimited)"),
     expires_at: int = typer.Option(0, "--expires-at", "-e", help="Expiry UNIX timestamp (0 = never)"),
     device_limit: int = typer.Option(0, "--device-limit", "-d", help="Max number of devices (0 = unlimited)"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags (e.g. TEST,VIP)"),
 ):
     """Create a new user."""
-    result = _api(
-        "POST",
-        "/api/users",
-        json={
-            "username": username,
-            "traffic_limit": int(traffic_limit * 1024**3),
-            "expires_at": expires_at,
-            "device_limit": device_limit,
-        },
-    )
+    body: dict[str, Any] = {
+        "username": username,
+        "traffic_limit": int(traffic_limit * 1024**3),
+        "expires_at": expires_at,
+        "device_limit": device_limit,
+    }
+    parsed_tags = _parse_tags(tags)
+    if parsed_tags is not None:
+        body["tags"] = parsed_tags
+    result = _api("POST", "/api/users", json=body)
     console.print("[green]Created[/green]")
     console.print(f"  username     : {result['username']}")
     console.print(f"  password     : {result['password']}")
     console.print(f"  sid          : {result['sid']}")
     console.print(f"  device_limit : {result['device_limit'] or 'unlimited'}")
+    console.print(f"  tags         : {_fmt_tags(result.get('tags', []))}")
 
 
 @users_app.command("info")
@@ -273,6 +288,7 @@ def users_info(username: str = typer.Argument(..., help="Username")):
         str(row["device_limit"]) if row["device_limit"] else "unlimited",
     )
     table.add_row("expires_at", str(row["expires_at"]))
+    table.add_row("tags", _fmt_tags(row.get("tags", [])))
     console.print(table)
 
 
@@ -287,6 +303,7 @@ def users_edit(
     device_limit: Optional[int] = typer.Option(
         None, "--device-limit", "-d", help="Max number of devices (0 = unlimited)"
     ),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags, replaces all (e.g. TEST,VIP)"),
 ):
     """Edit an existing user."""
     body: dict[str, Any] = {}
@@ -302,6 +319,9 @@ def users_edit(
         body["expires_at"] = expires_at
     if device_limit is not None:
         body["device_limit"] = device_limit
+    parsed_tags = _parse_tags(tags)
+    if parsed_tags is not None:
+        body["tags"] = parsed_tags
     _api("PATCH", f"/api/users/{username}", json=body)
     console.print(f"[green]User '{username}' updated.[/green]")
 
@@ -402,7 +422,7 @@ def hosts_list():
     if not rows:
         console.print("No hosts found.")
         return
-    table = Table("address", "name", "port", "active", "api_address")
+    table = Table("address", "name", "port", "active", "api_address", "tags")
     for h in rows:
         table.add_row(
             h["address"],
@@ -410,6 +430,7 @@ def hosts_list():
             str(h["port"]),
             "[green]yes[/green]" if h["active"] else "[red]no[/red]",
             h["api_address"],
+            _fmt_tags(h.get("tags", [])),
         )
     console.print(table)
 
@@ -422,20 +443,21 @@ def hosts_create(
     api_secret: str = typer.Option(..., "--api-secret", "-s", help="Hysteria2 API secret"),
     port: int = typer.Option(443, "--port", "-p", help="Port"),
     active: bool = typer.Option(True, "--active", help="Enable host"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags (e.g. TEST,VIP)"),
 ):
     """Add a new Hysteria2 host."""
-    _api(
-        "POST",
-        "/api/hosts",
-        json={
-            "address": address,
-            "name": name,
-            "api_address": api_address,
-            "api_secret": api_secret,
-            "port": port,
-            "active": active,
-        },
-    )
+    body: dict[str, Any] = {
+        "address": address,
+        "name": name,
+        "api_address": api_address,
+        "api_secret": api_secret,
+        "port": port,
+        "active": active,
+    }
+    parsed_tags = _parse_tags(tags)
+    if parsed_tags is not None:
+        body["tags"] = parsed_tags
+    _api("POST", "/api/hosts", json=body)
     console.print(f"[green]Host '{address}' created.[/green]")
 
 
@@ -446,6 +468,7 @@ def hosts_info(address: str = typer.Argument(..., help="Host address")):
     table = Table(show_header=False, box=None, padding=(0, 2))
     for key in ("address", "name", "port", "api_address", "api_secret", "active"):
         table.add_row(key, str(row[key]))
+    table.add_row("tags", _fmt_tags(row.get("tags", [])))
     console.print(table)
 
 
@@ -457,6 +480,7 @@ def hosts_edit(
     api_address: Optional[str] = typer.Option(None, "--api-address", "-a"),
     api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s"),
     active: Optional[bool] = typer.Option(None, "--active"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags, replaces all (e.g. TEST,VIP)"),
 ):
     """Edit an existing host."""
     body: dict[str, Any] = {}
@@ -470,6 +494,9 @@ def hosts_edit(
         body["api_secret"] = api_secret
     if active is not None:
         body["active"] = active
+    parsed_tags = _parse_tags(tags)
+    if parsed_tags is not None:
+        body["tags"] = parsed_tags
     _api("PATCH", f"/api/hosts/{address}", json=body)
     console.print(f"[green]Host '{address}' updated.[/green]")
 
@@ -484,6 +511,33 @@ def hosts_delete(
         typer.confirm(f"Delete host '{address}'?", abort=True)
     _api("DELETE", f"/api/hosts/{address}")
     console.print(f"[green]Deleted '{address}'.[/green]")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tags sub-app
+# ─────────────────────────────────────────────────────────────────────────────
+tags_app = typer.Typer(
+    help="View all tags in use.",
+    add_completion=False,
+    rich_markup_mode="rich",
+    no_args_is_help=False,
+)
+app.add_typer(tags_app, name="tags")
+
+
+@tags_app.callback(invoke_without_command=True)
+def tags_list(ctx: typer.Context):
+    """List all tags currently assigned to hosts or users."""
+    if ctx.invoked_subcommand is not None:
+        return
+    rows = _api("GET", "/api/tags")
+    if not rows:
+        console.print("No tags found.")
+        return
+    table = Table("tag")
+    for tag in rows:
+        table.add_row(tag)
+    console.print(table)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

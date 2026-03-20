@@ -68,6 +68,20 @@ def init_db():
         )
     """)
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS host_tags (
+            host_address TEXT NOT NULL,
+            tag          TEXT NOT NULL,
+            PRIMARY KEY (host_address, tag)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_tags (
+            username TEXT NOT NULL,
+            tag      TEXT NOT NULL,
+            PRIMARY KEY (username, tag)
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS config (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -218,6 +232,7 @@ def delete_user(username: str) -> bool:
     cur.execute("DELETE FROM users WHERE username = ?", (username,))
     cur.execute("DELETE FROM traffic WHERE username = ?", (username,))
     cur.execute("DELETE FROM devices WHERE username = ?", (username,))
+    cur.execute("DELETE FROM user_tags WHERE username = ?", (username,))
     conn.commit()
     conn.close()
     return True
@@ -258,6 +273,7 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
         return False, "overlimit"
 
     return True, ""
+
 
 # ── devices ───────────────────────────────────────────────────────────────────
 
@@ -485,9 +501,95 @@ def delete_host(address: str) -> bool:
     conn = get_db()
     cur = conn.cursor()
     cur.execute("DELETE FROM hosts WHERE address = ?", (address,))
+    cur.execute("DELETE FROM host_tags WHERE host_address = ?", (address,))
     conn.commit()
     conn.close()
     return True
+
+
+# ── tags ──────────────────────────────────────────────────────────────────────
+
+
+def get_host_tags(address: str) -> list[str]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT tag FROM host_tags WHERE host_address = ? ORDER BY tag", (address,))
+    rows = cur.fetchall()
+    conn.close()
+    return [r["tag"] for r in rows]
+
+
+def set_host_tags(address: str, tags: list[str]) -> None:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM host_tags WHERE host_address = ?", (address,))
+    for tag in set(tags):
+        cur.execute("INSERT OR IGNORE INTO host_tags (host_address, tag) VALUES (?, ?)", (address, tag))
+    conn.commit()
+    conn.close()
+
+
+def get_user_tags(username: str) -> list[str]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT tag FROM user_tags WHERE username = ? ORDER BY tag", (username,))
+    rows = cur.fetchall()
+    conn.close()
+    return [r["tag"] for r in rows]
+
+
+def set_user_tags(username: str, tags: list[str]) -> None:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM user_tags WHERE username = ?", (username,))
+    for tag in set(tags):
+        cur.execute("INSERT OR IGNORE INTO user_tags (username, tag) VALUES (?, ?)", (username, tag))
+    conn.commit()
+    conn.close()
+
+
+def list_all_tags() -> list[str]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT tag FROM host_tags
+        UNION
+        SELECT DISTINCT tag FROM user_tags
+        ORDER BY tag
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return [r["tag"] for r in rows]
+
+
+def list_hosts_for_user(username: str, active_only: bool = True) -> list[dict]:
+    """
+    Return hosts visible to the given user:
+    - Hosts with no tags are visible to everyone.
+    - Hosts with tags are visible only if the user shares at least one tag.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    where = "AND h.active = 1" if active_only else ""
+    cur.execute(
+        f"""
+        SELECT h.* FROM hosts h
+        WHERE (
+            NOT EXISTS (SELECT 1 FROM host_tags ht WHERE ht.host_address = h.address)
+            OR EXISTS (
+                SELECT 1 FROM host_tags ht
+                JOIN user_tags ut ON ut.tag = ht.tag
+                WHERE ht.host_address = h.address AND ut.username = ?
+            )
+        )
+        {where}
+        ORDER BY h.address
+    """,
+        (username,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── config ────────────────────────────────────────────────────────────────────

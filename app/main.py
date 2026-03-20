@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .polling import poll_hysteria
-from .routes.internal import config, hosts, traffic, users
+from .routes.internal import config, hosts, tags, traffic, users
 from .routes.public import auth, sub
 
 
@@ -57,3 +57,4 @@ internal_app.include_router(users.router)
 internal_app.include_router(traffic.router)
 internal_app.include_router(hosts.router)
 internal_app.include_router(config.router)
+internal_app.include_router(tags.router)
