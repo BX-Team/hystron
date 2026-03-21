@@ -2,11 +2,20 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
-ARG TARGETARCH
-COPY files/xray-${TARGETARCH} /usr/local/bin/xray
-RUN chmod +x /usr/local/bin/xray
+COPY files/ /tmp/xray-dist/
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        x86_64)  XRAY_ARCH="64" ;; \
+        aarch64) XRAY_ARCH="arm64-v8a" ;; \
+        armv7l)  XRAY_ARCH="arm32-v7a" ;; \
+        *)       XRAY_ARCH="64" ;; \
+    esac && \
+    unzip /tmp/xray-dist/Xray-linux-${XRAY_ARCH}.zip xray -d /usr/local/bin && \
+    chmod +x /usr/local/bin/xray && \
+    rm -rf /tmp/xray-dist
 
 COPY docker/node/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
