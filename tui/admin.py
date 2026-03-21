@@ -426,19 +426,22 @@ class HostCreateModal(BaseModal):
         with Container(classes="modal-box"):
             yield Static("Create host", classes="modal-title")
             with Vertical(classes="input-container"):
-                yield Input(placeholder="Address      (e.g. vpn.example.com)", id="address")
-                yield Input(placeholder="Name         (display label)", id="name")
-                yield Input(placeholder="Port         (default 443)", id="port")
-                yield Input(
-                    placeholder="API address  (e.g. http://127.0.0.1:25413)",
-                    id="api_address",
-                )
-                yield Input(placeholder="API secret", id="api_secret")
+                yield Input(placeholder="Address          (e.g. vpn.example.com)", id="address")
+                yield Input(placeholder="Name             (display label)", id="name")
+                yield Input(placeholder="Port             (default 443)", id="port")
+                yield Input(placeholder="gRPC address     (e.g. 10.0.0.1:10085)", id="grpc_address")
+                yield Static("─── auto-detect fills the fields below ───", classes="modal-title")
+                yield Input(placeholder="Protocol         (vless_reality | trojan | hysteria2)", id="protocol")
+                yield Input(placeholder="Inbound tag      (xray inbound tag)", id="inbound_tag")
+                yield Input(placeholder="SNI              (TLS server name)", id="sni")
+                yield Input(placeholder="REALITY public key", id="reality_public_key")
+                yield Input(placeholder="REALITY short ID", id="reality_short_id")
                 yield Input(placeholder="Tags (comma-separated, e.g. TEST,VIP)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
                     yield Switch(animate=False, id="active", value=True)
             with Horizontal(classes="button-row"):
+                yield Button("Detect", id="detect", variant="warning")
                 yield Button("Create", id="create", variant="success")
                 yield Button("Cancel", id="cancel", variant="error")
 
@@ -450,6 +453,32 @@ class HostCreateModal(BaseModal):
             await self.on_button_pressed(Button.Pressed(self.query_one("#create")))
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "detect":
+            grpc_address = self.query_one("#grpc_address").value.strip()
+            if not grpc_address:
+                self.notify("Enter gRPC address first", severity="warning", title="Detect")
+                return
+            from app.xray.node_info import fetch_node_info
+            info = fetch_node_info(grpc_address)
+            if info is None:
+                self.notify(
+                    "Could not reach node info endpoint.\nCheck gRPC address and info port (10086).",
+                    severity="error",
+                    title="Detect failed",
+                )
+                return
+            if info.get("protocol"):
+                self.query_one("#protocol", Input).value = info["protocol"]
+            if info.get("inbound_tag"):
+                self.query_one("#inbound_tag", Input).value = info["inbound_tag"]
+            if info.get("sni"):
+                self.query_one("#sni", Input).value = info["sni"]
+            if info.get("reality_public_key"):
+                self.query_one("#reality_public_key", Input).value = info["reality_public_key"]
+            if info.get("reality_short_id"):
+                self.query_one("#reality_short_id", Input).value = info["reality_short_id"]
+            self.notify("Settings detected from node.", severity="information", title="Detect")
+            return
         if event.button.id == "create":
             address = self.query_one("#address").value.strip()
             if not address:
@@ -457,8 +486,12 @@ class HostCreateModal(BaseModal):
                 return
             name = self.query_one("#name").value.strip() or address
             port_raw = self.query_one("#port").value.strip()
-            api_address = self.query_one("#api_address").value.strip()
-            api_secret = self.query_one("#api_secret").value.strip()
+            grpc_address = self.query_one("#grpc_address").value.strip()
+            protocol = self.query_one("#protocol").value.strip() or "vless_reality"
+            inbound_tag = self.query_one("#inbound_tag").value.strip()
+            sni = self.query_one("#sni").value.strip()
+            reality_public_key = self.query_one("#reality_public_key").value.strip()
+            reality_short_id = self.query_one("#reality_short_id").value.strip()
             tags_raw = self.query_one("#tags").value.strip()
             active = self.query_one("#active").value
             try:
@@ -466,7 +499,18 @@ class HostCreateModal(BaseModal):
             except ValueError:
                 self.notify("Port must be a number", severity="error", title="Error")
                 return
-            result = create_host(address, name, api_address, api_secret, port=port, active=active)
+            result = create_host(
+                address,
+                name,
+                grpc_address,
+                protocol=protocol,
+                inbound_tag=inbound_tag,
+                sni=sni,
+                reality_public_key=reality_public_key,
+                reality_short_id=reality_short_id,
+                port=port,
+                active=active,
+            )
             if result is None:
                 self.notify(f"Host '{address}' already exists", severity="error", title="Error")
                 return
@@ -490,10 +534,14 @@ class HostEditModal(BaseModal):
         with Container(classes="modal-box"):
             yield Static(f"Edit host '{self.address}'", classes="modal-title")
             with Vertical(classes="input-container"):
-                yield Input(placeholder="Name        (empty = keep)", id="name")
-                yield Input(placeholder="Port        (empty = keep)", id="port")
-                yield Input(placeholder="API address (empty = keep)", id="api_address")
-                yield Input(placeholder="API secret  (empty = keep)", id="api_secret")
+                yield Input(placeholder="Name             (empty = keep)", id="name")
+                yield Input(placeholder="Port             (empty = keep)", id="port")
+                yield Input(placeholder="gRPC address     (empty = keep)", id="grpc_address")
+                yield Input(placeholder="Protocol         (empty = keep)", id="protocol")
+                yield Input(placeholder="Inbound tag      (empty = keep)", id="inbound_tag")
+                yield Input(placeholder="SNI              (empty = keep)", id="sni")
+                yield Input(placeholder="REALITY public key (empty = keep)", id="reality_public_key")
+                yield Input(placeholder="REALITY short ID   (empty = keep)", id="reality_short_id")
                 yield Input(placeholder="Tags (comma-separated, empty = keep)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
@@ -519,8 +567,12 @@ class HostEditModal(BaseModal):
         if event.button.id == "save":
             name = self.query_one("#name").value.strip() or None
             port_raw = self.query_one("#port").value.strip()
-            api_address = self.query_one("#api_address").value.strip() or None
-            api_secret = self.query_one("#api_secret").value.strip() or None
+            grpc_address = self.query_one("#grpc_address").value.strip() or None
+            protocol = self.query_one("#protocol").value.strip() or None
+            inbound_tag = self.query_one("#inbound_tag").value.strip() or None
+            sni = self.query_one("#sni").value.strip() or None
+            reality_public_key = self.query_one("#reality_public_key").value.strip() or None
+            reality_short_id = self.query_one("#reality_short_id").value.strip() or None
             tags_raw = self.query_one("#tags").value.strip()
             active = self.query_one("#active").value
             try:
@@ -532,8 +584,12 @@ class HostEditModal(BaseModal):
                 self.address,
                 name=name,
                 port=port,
-                api_address=api_address,
-                api_secret=api_secret,
+                grpc_address=grpc_address,
+                protocol=protocol,
+                inbound_tag=inbound_tag,
+                sni=sni,
+                reality_public_key=reality_public_key,
+                reality_short_id=reality_short_id,
                 active=active,
             )
             if tags_raw is not None:
@@ -719,7 +775,9 @@ class UsersContent(Static):
             "Expires At",
             "Total Traffic",
             "Tags",
-            "SID",
+            "VLESS UUID",
+            "Trojan PWD",
+            "Hysteria2 PWD",
         ]
         data = [
             [
@@ -733,7 +791,9 @@ class UsersContent(Static):
                 _fmt_ts(r["expires_at"]),
                 fmt_bytes(r["total"]),
                 ", ".join(get_user_tags(r["username"])) or "—",
-                r["sid"],
+                r.get("vless_uuid", ""),
+                r.get("trojan_password", ""),
+                r.get("hysteria2_password", ""),
             ]
             for idx, r in enumerate(rows, 1)
         ]
@@ -837,7 +897,7 @@ class TrafficContent(Static):
 
 
 class HostsContent(Static):
-    """Hosts tab — CRUD for Hysteria2 server hosts."""
+    """Hosts tab — CRUD for xray server hosts."""
 
     BINDINGS = [
         Binding("c", "create_host", "Create"),
@@ -861,16 +921,17 @@ class HostsContent(Static):
             self.table.add_columns("  (no hosts — press 'c' to create one)  ")
             return
 
-        columns = ["#", "Address", "Name", "Port", "Active", "Tags", "API Address"]
+        columns = ["#", "Address", "Name", "Port", "Protocol", "Active", "Tags", "gRPC Address"]
         data = [
             [
                 str(idx),
                 r["address"],
                 r["name"],
                 str(r["port"]),
+                r.get("protocol", ""),
                 "\u2714" if r["active"] else "\u2716",
                 ", ".join(get_host_tags(r["address"])) or "—",
-                r["api_address"],
+                r.get("grpc_address", ""),
             ]
             for idx, r in enumerate(rows, 1)
         ]

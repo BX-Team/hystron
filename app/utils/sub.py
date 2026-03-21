@@ -52,9 +52,19 @@ def get_templates_search_dirs() -> list[str]:
     return dirs
 
 
-def _make_uri(host: dict, pwd: str) -> str:
-    """Build a share URI for the given host and user password/UUID."""
+def _credential_for(user: dict, protocol: str) -> str:
+    """Pick the per-protocol credential from a user dict."""
+    if protocol == "vless_reality":
+        return user.get("vless_uuid") or user["password"]
+    if protocol == "hysteria2":
+        return user.get("hysteria2_password") or user["password"]
+    return user.get("trojan_password") or user["password"]
+
+
+def _make_uri(host: dict, user: dict) -> str:
+    """Build a share URI for the given host and user."""
     proto = host.get("protocol", "hysteria2")
+    pwd = _credential_for(user, proto)
     name = urllib.parse.quote(host["name"])
 
     if proto == "vless_reality":
@@ -81,10 +91,10 @@ def _make_uri(host: dict, pwd: str) -> str:
         return f"hysteria2://{pwd}@{host['address']}:{host['port']}?sni={sni}#{name}"
 
 
-def make_links(uname: str, pwd: str) -> list[dict]:
+def make_links(uname: str, user: dict) -> list[dict]:
     return [
         {
-            "uri": _make_uri(h, pwd),
+            "uri": _make_uri(h, user),
             "label": h["name"],
             "host": h["address"],
         }
@@ -130,8 +140,9 @@ def make_base_headers(
     return title_b64, headers
 
 
-def _singbox_outbound(host: dict, pwd: str) -> dict:
+def _singbox_outbound(host: dict, user: dict) -> dict:
     proto = host.get("protocol", "hysteria2")
+    pwd = _credential_for(user, proto)
     sni = host.get("sni", host["address"])
 
     if proto == "vless_reality":
@@ -173,13 +184,13 @@ def _singbox_outbound(host: dict, pwd: str) -> dict:
         }
 
 
-def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
+def build_singbox(uname: str, user: dict, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
     config = json.load(open(get_template_file("singbox.json")))
     proxy_names = []
     for h in hosts:
         proxy_names.append(h["name"])
-        config["outbounds"].append(_singbox_outbound(h, pwd))
+        config["outbounds"].append(_singbox_outbound(h, user))
     config["outbounds"][0]["outbounds"] = proxy_names
     return PlainTextResponse(
         json.dumps(config, indent=4, ensure_ascii=False),
@@ -188,8 +199,9 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
     )
 
 
-def _clash_proxy_entry(host: dict, pwd: str) -> str:
+def _clash_proxy_entry(host: dict, user: dict) -> str:
     proto = host.get("protocol", "hysteria2")
+    pwd = _credential_for(user, proto)
     sni = host.get("sni", host["address"])
     name = host["name"]
     addr = host["address"]
@@ -231,9 +243,9 @@ def _clash_proxy_entry(host: dict, pwd: str) -> str:
         )
 
 
-def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
+def build_clash(uname: str, user: dict, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
-    proxies_yaml = "".join(_clash_proxy_entry(h, pwd) for h in hosts)
+    proxies_yaml = "".join(_clash_proxy_entry(h, user) for h in hosts)
     proxy_names_yaml = "\n      - ".join(h["name"] for h in hosts)
     template = open(get_template_file("clash.yaml")).read()
     return PlainTextResponse(
@@ -243,14 +255,14 @@ def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     )
 
 
-def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
+def build_xray(uname: str, user: dict, base_headers: dict) -> PlainTextResponse:
     """V2RayNG and similar clients accept a base64-encoded list of share URIs."""
-    return build_plain(uname, pwd, base_headers)
+    return build_plain(uname, user, base_headers)
 
 
-def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
+def build_plain(uname: str, user: dict, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
-    body = "\n".join(_make_uri(h, pwd) for h in hosts)
+    body = "\n".join(_make_uri(h, user) for h in hosts)
     return PlainTextResponse(
         base64.b64encode(body.encode()).decode(),
         headers=base_headers,

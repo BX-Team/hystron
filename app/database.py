@@ -70,8 +70,8 @@ def list_users_with_traffic() -> list[dict]:
         rows = (
             session.execute(
                 text("""
-                SELECT u.username, u.password, u.sid, u.active,
-                       u.traffic_limit, u.expires_at, u.device_limit,
+                SELECT u.username, u.password, u.vless_uuid, u.trojan_password, u.hysteria2_password,
+                       u.sid, u.active, u.traffic_limit, u.expires_at, u.device_limit,
                        COALESCE(SUM(t.tx + t.rx), 0) AS total,
                        (SELECT COUNT(*) FROM devices d WHERE d.username = u.username) AS device_count
                 FROM users u
@@ -96,12 +96,18 @@ def create_user(
     if user_exists(username):
         return None
     password = str(uuid.uuid4())
+    vless_uuid = str(uuid.uuid4())
+    trojan_password = str(uuid.uuid4())
+    hysteria2_password = str(uuid.uuid4())
     sid = secrets.token_urlsafe(12)
     with SessionLocal() as session:
         session.add(
             User(
                 username=username,
                 password=password,
+                vless_uuid=vless_uuid,
+                trojan_password=trojan_password,
+                hysteria2_password=hysteria2_password,
                 sid=sid,
                 traffic_limit=traffic_limit,
                 expires_at=expires_at,
@@ -112,6 +118,9 @@ def create_user(
     return {
         "username": username,
         "password": password,
+        "vless_uuid": vless_uuid,
+        "trojan_password": trojan_password,
+        "hysteria2_password": hysteria2_password,
         "sid": sid,
         "traffic_limit": traffic_limit,
         "expires_at": expires_at,
@@ -123,6 +132,9 @@ def edit_user(
     username: str,
     *,
     password: str | None = None,
+    vless_uuid: str | None = None,
+    trojan_password: str | None = None,
+    hysteria2_password: str | None = None,
     sid: str | None = None,
     active: bool | None = None,
     traffic_limit: int | None = None,
@@ -135,6 +147,12 @@ def edit_user(
             return False
         if password is not None:
             user.password = password
+        if vless_uuid is not None:
+            user.vless_uuid = vless_uuid
+        if trojan_password is not None:
+            user.trojan_password = trojan_password
+        if hysteria2_password is not None:
+            user.hysteria2_password = hysteria2_password
         if sid is not None:
             user.sid = sid
         if active is not None:

@@ -1,25 +1,18 @@
 FROM debian:bookworm-slim
 
-ARG XRAY_VERSION=25.3.6
-ARG TARGETARCH=64
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates unzip python3 \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -Lo /tmp/xray.zip \
-      "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-${TARGETARCH}.zip" \
-    && unzip /tmp/xray.zip xray -d /usr/local/bin/ \
-    && chmod +x /usr/local/bin/xray \
-    && rm /tmp/xray.zip
+ARG TARGETARCH
+COPY files/xray-${TARGETARCH} /usr/local/bin/xray
+RUN chmod +x /usr/local/bin/xray
 
 COPY docker/node/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# User config template is mounted here
 VOLUME /etc/xray
 
-# Proxy port (TCP/UDP) + gRPC management port
-EXPOSE 443/tcp 443/udp 10085/tcp
+EXPOSE 443/tcp 443/udp 10085/tcp 10086/tcp
 
 ENTRYPOINT ["/entrypoint.sh"]

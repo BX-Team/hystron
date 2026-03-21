@@ -9,10 +9,11 @@ services:
     ports:
       - "${PROXY_PORT:-443}:443/tcp"
       - "${PROXY_PORT:-443}:443/udp"
-      # WARNING: Do NOT expose 10085 to the public internet.
+      # WARNING: Do NOT expose 10085/10086 to the public internet.
       # Use a private Docker network or firewall rules to restrict access
       # to the Hystron panel only.
       - "127.0.0.1:${GRPC_PORT:-10085}:10085"
+      - "127.0.0.1:${INFO_PORT:-10086}:10086"
     volumes:
       # Mount your xray config template here (read-only)
       - /etc/xray:/etc/xray:ro
@@ -20,3 +21,4 @@ services:
       - XRAY_CONFIG_TEMPLATE=/etc/xray/config.json
       - XRAY_API_HOST=0.0.0.0
       - XRAY_API_PORT=${GRPC_PORT:-10085}
+      - XRAY_INFO_PORT=10086

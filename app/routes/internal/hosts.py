@@ -63,6 +63,23 @@ def _row_to_dict(row) -> dict:
     }
 
 
+@router.get("/hosts/detect")
+def hosts_detect(grpc_address: str, info_port: int = 10086):
+    """
+    Auto-detect a node's protocol settings from its info endpoint.
+    Returns a partial host config (protocol, inbound_tag, sni, reality keys).
+    """
+    from app.xray.node_info import fetch_node_info
+
+    info = fetch_node_info(grpc_address, info_port)
+    if info is None:
+        return JSONResponse(
+            {"error": f"Could not reach node info endpoint at {grpc_address.split(':')[0]}:{info_port}"},
+            status_code=502,
+        )
+    return info
+
+
 @router.get("/hosts")
 def hosts_list():
     return [_row_to_dict(h) for h in list_hosts()]

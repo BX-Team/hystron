@@ -92,9 +92,9 @@ async def subscription(sid: str, request: Request):
         return Response(status_code=404)
 
     base_url = _get_base_url(request)
-    uname, pwd = user["username"], user["password"]
+    uname = user["username"]
     sub_url = f"{base_url}{SUBSCRIPTION_PATH}/{sid}"
-    link_list = make_links(uname, pwd)
+    link_list = make_links(uname, user)
     ua = request.headers.get("user-agent", "")
     accept = request.headers.get("accept", "")
     is_browser = "text/html" in accept or any(k in ua for k in _BROWSER_KW)
@@ -134,13 +134,13 @@ async def subscription(sid: str, request: Request):
         )
 
         if _RE_SINGBOX.search(ua):
-            return build_singbox(uname, pwd, base_headers)
+            return build_singbox(uname, user, base_headers)
         if _RE_CLASH.search(ua):
-            return build_clash(uname, pwd, base_headers)
+            return build_clash(uname, user, base_headers)
         if _RE_XRAY.search(ua):
-            return build_xray(uname, pwd, base_headers)
+            return build_xray(uname, user, base_headers)
         if _RE_PLAIN.search(ua):
-            return build_plain(uname, pwd, base_headers)
+            return build_plain(uname, user, base_headers)
 
     print(f"\nbrowser: {uname} | {request.client.host}\n")
 

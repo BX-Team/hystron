@@ -31,6 +31,9 @@ class CreateBody(BaseModel):
 
 class EditBody(BaseModel):
     password: Optional[str] = None
+    vless_uuid: Optional[str] = None
+    trojan_password: Optional[str] = None
+    hysteria2_password: Optional[str] = None
     sid: Optional[str] = None
     active: Optional[bool] = None
     traffic_limit: Optional[int] = None
@@ -44,6 +47,9 @@ def _row_to_dict(row) -> dict:
     return {
         "username": username,
         "password": row["password"],
+        "vless_uuid": row.get("vless_uuid", ""),
+        "trojan_password": row.get("trojan_password", ""),
+        "hysteria2_password": row.get("hysteria2_password", ""),
         "sid": row["sid"],
         "active": bool(row["active"]),
         "traffic_limit": row["traffic_limit"],
@@ -77,7 +83,7 @@ async def users_create(body: CreateBody):
         set_user_tags(username, body.tags)
     result["tags"] = get_user_tags(username)
 
-    asyncio.create_task(sync_user_to_all_hosts(username, result["password"], active=True))
+    asyncio.create_task(sync_user_to_all_hosts(result, active=True))
     return result
 
 
@@ -97,11 +103,13 @@ async def users_edit(username: str, body: EditBody):
         return JSONResponse({"error": "not found"}, status_code=404)
 
     old_user = get_user(username)
-    old_password = old_user["password"]
 
     edit_user(
         username,
         password=body.password,
+        vless_uuid=body.vless_uuid,
+        trojan_password=body.trojan_password,
+        hysteria2_password=body.hysteria2_password,
         sid=body.sid,
         active=body.active,
         traffic_limit=body.traffic_limit,
@@ -113,12 +121,16 @@ async def users_edit(username: str, body: EditBody):
 
     updated = get_user(username)
 
-    if body.password is not None:
-        # Password changed: remove old identity, add with new password
-        asyncio.create_task(sync_user_to_all_hosts(username, old_password, active=False))
-        asyncio.create_task(sync_user_to_all_hosts(username, updated["password"], active=True))
+    credentials_changed = any(
+        getattr(body, f) is not None
+        for f in ("password", "vless_uuid", "trojan_password", "hysteria2_password")
+    )
+    if credentials_changed:
+        # Remove old identities on all hosts, then re-add with new credentials.
+        asyncio.create_task(sync_user_to_all_hosts(old_user, active=False))
+        asyncio.create_task(sync_user_to_all_hosts(updated, active=True))
     elif body.active is not None:
-        asyncio.create_task(sync_user_to_all_hosts(username, updated["password"], active=body.active))
+        asyncio.create_task(sync_user_to_all_hosts(updated, active=body.active))
 
     return _row_to_dict(updated)
 
@@ -130,12 +142,11 @@ async def users_delete(username: str):
     user = get_user(username)
     if user is None:
         return JSONResponse({"error": "not found"}, status_code=404)
-    password = user["password"]
 
     if not delete_user(username):
         return JSONResponse({"error": "not found"}, status_code=404)
 
-    asyncio.create_task(sync_user_to_all_hosts(username, password, active=False))
+    asyncio.create_task(sync_user_to_all_hosts(user, active=False))
     return {"ok": True}
 
 

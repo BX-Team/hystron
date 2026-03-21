@@ -5,7 +5,9 @@ set -euo pipefail
 
 REPO_URL="https://github.com/BX-Team/hystron"
 IMAGE_NAME="ghcr.io/bx-team/hystron"
+NODE_IMAGE_NAME="ghcr.io/bx-team/hystron-node"
 INSTALL_DIR="/opt/hystron"
+NODE_INSTALL_DIR="/opt/hystron-node"
 DATA_DIR="/var/lib/hystron"
 
 # PyPI mirror — override via --mirror flag or PYPI_MIRROR env var.
@@ -160,6 +162,132 @@ remove_cli() {
     info "CLI removed."
 }
 
+# ── component selection ───────────────────────────────────────────────────────
+choose_component() {
+    echo ""
+    echo "What would you like to install?"
+    echo "  1) Panel  — Hystron management panel (default)"
+    echo "  2) Node   — xray-core node (connect to an existing panel)"
+    echo ""
+    read -rp "Enter choice [1-2] (default: 1): " comp_choice
+    comp_choice="${comp_choice:-1}"
+    case "$comp_choice" in
+        1) INSTALL_COMPONENT="panel" ;;
+        2) INSTALL_COMPONENT="node" ;;
+        *) warn "Invalid choice, installing panel."; INSTALL_COMPONENT="panel" ;;
+    esac
+}
+
+# ── node version selection ─────────────────────────────────────────────────────
+choose_node_version() {
+    echo ""
+    echo "Select the hystron-node version to install:"
+    echo "  1) latest  (default)"
+    echo "  2) Specific version (e.g. 1.2.3)"
+    echo ""
+    read -rp "Enter choice [1-2] (default: 1): " ver_choice
+    ver_choice="${ver_choice:-1}"
+    case "$ver_choice" in
+        1) HYSTRON_NODE_VERSION="latest" ;;
+        2)
+            read -rp "Enter version (e.g. 1.2.3): " custom_ver
+            HYSTRON_NODE_VERSION="${custom_ver:-latest}"
+            ;;
+        *) warn "Invalid choice, using latest."; HYSTRON_NODE_VERSION="latest" ;;
+    esac
+    info "Using image: ${NODE_IMAGE_NAME}:${HYSTRON_NODE_VERSION}"
+}
+
+# ── node port selection ────────────────────────────────────────────────────────
+choose_node_ports() {
+    echo ""
+    read -rp "Proxy port (TCP+UDP, exposed to clients) [443]: " PROXY_PORT
+    PROXY_PORT="${PROXY_PORT:-443}"
+    read -rp "gRPC port (panel → node, keep private!) [10085]: " GRPC_PORT
+    GRPC_PORT="${GRPC_PORT:-10085}"
+}
+
+# ── node xray config path ─────────────────────────────────────────────────────
+choose_node_config() {
+    echo ""
+    read -rp "Path to your xray config template [/etc/xray/config.json]: " XRAY_CONFIG
+    XRAY_CONFIG="${XRAY_CONFIG:-/etc/xray/config.json}"
+}
+
+# ── node .env generation ──────────────────────────────────────────────────────
+setup_node_env() {
+    local env_file="${NODE_INSTALL_DIR}/.env"
+    if [[ -f "$env_file" ]]; then
+        warn ".env already exists — skipping generation. Edit ${env_file} if needed."
+        return
+    fi
+    info "Generating node .env..."
+    cat > "$env_file" <<EOF
+HYSTRON_VERSION=${HYSTRON_NODE_VERSION:-latest}
+PROXY_PORT=${PROXY_PORT:-443}
+GRPC_PORT=${GRPC_PORT:-10085}
+XRAY_CONFIG_TEMPLATE=${XRAY_CONFIG:-/etc/xray/config.json}
+EOF
+    chmod 600 "$env_file"
+    info ".env created at ${env_file}"
+}
+
+# ── fetch node compose file ───────────────────────────────────────────────────
+fetch_node_compose() {
+    mkdir -p "$NODE_INSTALL_DIR"
+    info "Downloading docker-compose.node.yml to ${NODE_INSTALL_DIR}..."
+    curl -fsSL "${REPO_URL}/raw/refs/heads/master/docker-compose.node.yml" \
+        -o "${NODE_INSTALL_DIR}/docker-compose.node.yml"
+    info "docker-compose.node.yml downloaded."
+}
+
+# ── install node ──────────────────────────────────────────────────────────────
+do_install_node() {
+    require_root
+    install_docker
+    detect_compose
+    [[ -z "$COMPOSE_CMD" ]] && error "Docker Compose not found. Please install Docker with Compose support."
+
+    choose_node_version
+    choose_node_ports
+    choose_node_config
+    fetch_node_compose
+    setup_node_env
+
+    local xray_dir
+    xray_dir="$(dirname "$XRAY_CONFIG")"
+    if [[ ! -f "$XRAY_CONFIG" ]]; then
+        warn "Config template not found at ${XRAY_CONFIG}. Create it before starting the node."
+        info "Creating directory ${xray_dir}..."
+        mkdir -p "$xray_dir"
+    fi
+
+    info "Pulling image ${NODE_IMAGE_NAME}:${HYSTRON_NODE_VERSION}..."
+    docker pull "${NODE_IMAGE_NAME}:${HYSTRON_NODE_VERSION}"
+
+    info "Starting xray node..."
+    $COMPOSE_CMD -f "${NODE_INSTALL_DIR}/docker-compose.node.yml" \
+        --env-file "${NODE_INSTALL_DIR}/.env" up -d
+
+    echo "${HYSTRON_NODE_VERSION}" > "${NODE_INSTALL_DIR}/.hystron_version"
+
+    local server_ip
+    server_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}') \
+        || server_ip=$(hostname -I 2>/dev/null | awk '{print $1}') \
+        || server_ip="localhost"
+
+    echo ""
+    info "=== Node installation complete ==="
+    info "  Proxy port (clients) → ${server_ip}:${PROXY_PORT:-443}"
+    info "  gRPC port  (panel)   → 127.0.0.1:${GRPC_PORT:-10085}"
+    info "  Config template      → ${XRAY_CONFIG}"
+    info "  Install dir          → ${NODE_INSTALL_DIR}"
+    echo ""
+    warn "  Do NOT expose the gRPC port (${GRPC_PORT:-10085}) to the public internet."
+    info "  Set grpc_address = ${server_ip}:${GRPC_PORT:-10085} in your Hystron panel."
+    info "  Logs: docker logs -f xray-node"
+}
+
 # ── install ───────────────────────────────────────────────────────────────────
 do_install() {
     require_root
@@ -280,7 +408,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${1:-install}" in
-    install)   do_install ;;
+    install)
+        choose_component
+        if [[ "$INSTALL_COMPONENT" == "node" ]]; then
+            do_install_node
+        else
+            do_install
+        fi
+        ;;
     uninstall) do_uninstall ;;
     update)    do_update ;;
     *)         usage ;;

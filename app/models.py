@@ -16,6 +16,13 @@ class User(Base):
     traffic_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expires_at: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     device_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Per-protocol credentials — each generated independently at user creation.
+    # vless_uuid  : UUID for VLESS+REALITY
+    # trojan_password : password for Trojan (defaults to `password` for old rows)
+    # hysteria2_password : password for Hysteria2 (defaults to `password` for old rows)
+    vless_uuid: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    trojan_password: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    hysteria2_password: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
 
 class Device(Base):

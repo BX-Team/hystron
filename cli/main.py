@@ -99,7 +99,7 @@ def _compose_env() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 app = typer.Typer(
     name="hystron",
-    help="[bold green]Hystron[/bold green] — Hysteria2 panel management CLI.",
+    help="[bold green]Hystron[/bold green] — xray panel management CLI.",
     add_completion=False,
     rich_markup_mode="rich",
     no_args_is_help=True,
@@ -219,7 +219,9 @@ def users_list():
         return
     table = Table(
         "username",
-        "password",
+        "vless_uuid",
+        "trojan_pwd",
+        "hy2_pwd",
         "active",
         "sid",
         "traffic_limit",
@@ -231,7 +233,9 @@ def users_list():
     for u in rows:
         table.add_row(
             u["username"],
-            u["password"],
+            u.get("vless_uuid", ""),
+            u.get("trojan_password", ""),
+            u.get("hysteria2_password", ""),
             "[green]yes[/green]" if u["active"] else "[red]no[/red]",
             u["sid"],
             _fmt_bytes(u["traffic_limit"]) if u["traffic_limit"] else "unlimited",
@@ -263,11 +267,13 @@ def users_create(
         body["tags"] = parsed_tags
     result = _api("POST", "/api/users", json=body)
     console.print("[green]Created[/green]")
-    console.print(f"  username     : {result['username']}")
-    console.print(f"  password     : {result['password']}")
-    console.print(f"  sid          : {result['sid']}")
-    console.print(f"  device_limit : {result['device_limit'] or 'unlimited'}")
-    console.print(f"  tags         : {_fmt_tags(result.get('tags', []))}")
+    console.print(f"  username           : {result['username']}")
+    console.print(f"  vless_uuid         : {result.get('vless_uuid', '')}")
+    console.print(f"  trojan_password    : {result.get('trojan_password', '')}")
+    console.print(f"  hysteria2_password : {result.get('hysteria2_password', '')}")
+    console.print(f"  sid                : {result['sid']}")
+    console.print(f"  device_limit       : {result['device_limit'] or 'unlimited'}")
+    console.print(f"  tags               : {_fmt_tags(result.get('tags', []))}")
 
 
 @users_app.command("info")
@@ -276,7 +282,9 @@ def users_info(username: str = typer.Argument(..., help="Username")):
     row = _api("GET", f"/api/users/{username}")
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row("username", row["username"])
-    table.add_row("password", row["password"])
+    table.add_row("vless_uuid", row.get("vless_uuid", ""))
+    table.add_row("trojan_password", row.get("trojan_password", ""))
+    table.add_row("hysteria2_password", row.get("hysteria2_password", ""))
     table.add_row("sid", row["sid"])
     table.add_row("active", "[green]yes[/green]" if row["active"] else "[red]no[/red]")
     table.add_row(
@@ -407,7 +415,7 @@ def traffic_list(
 # Hosts sub-app
 # ─────────────────────────────────────────────────────────────────────────────
 hosts_app = typer.Typer(
-    help="Manage Hysteria2 hosts.",
+    help="Manage xray hosts.",
     add_completion=False,
     rich_markup_mode="rich",
     no_args_is_help=True,
@@ -422,14 +430,15 @@ def hosts_list():
     if not rows:
         console.print("No hosts found.")
         return
-    table = Table("address", "name", "port", "active", "api_address", "tags")
+    table = Table("address", "name", "port", "protocol", "active", "grpc_address", "tags")
     for h in rows:
         table.add_row(
             h["address"],
             h["name"],
             str(h["port"]),
+            h.get("protocol", ""),
             "[green]yes[/green]" if h["active"] else "[red]no[/red]",
-            h["api_address"],
+            h.get("grpc_address", ""),
             _fmt_tags(h.get("tags", [])),
         )
     console.print(table)
@@ -439,18 +448,42 @@ def hosts_list():
 def hosts_create(
     address: str = typer.Argument(..., help="Host address (domain or IP)"),
     name: str = typer.Option(..., "--name", "-n", help="Display name"),
-    api_address: str = typer.Option(..., "--api-address", "-a", help="Hysteria2 API address"),
-    api_secret: str = typer.Option(..., "--api-secret", "-s", help="Hysteria2 API secret"),
+    grpc_address: str = typer.Option(..., "--grpc-address", "-g", help="xray gRPC address (host:port)"),
+    protocol: str = typer.Option("vless_reality", "--protocol", "-P", help="Protocol: vless_reality | trojan | hysteria2"),
+    inbound_tag: str = typer.Option("", "--inbound-tag", "-t", help="xray inbound tag"),
+    sni: str = typer.Option("", "--sni", help="TLS SNI"),
+    reality_public_key: str = typer.Option("", "--reality-public-key", help="REALITY public key"),
+    reality_short_id: str = typer.Option("", "--reality-short-id", help="REALITY short ID"),
     port: int = typer.Option(443, "--port", "-p", help="Port"),
     active: bool = typer.Option(True, "--active", help="Enable host"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags (e.g. TEST,VIP)"),
+    auto_detect: bool = typer.Option(False, "--auto-detect", "-D", help="Auto-detect protocol settings from node info endpoint (port 10086)"),
+    info_port: int = typer.Option(10086, "--info-port", help="Node info endpoint port (used with --auto-detect)"),
 ):
-    """Add a new Hysteria2 host."""
+    """Add a new xray host."""
+    if auto_detect:
+        detected = _api("GET", f"/api/hosts/detect?grpc_address={grpc_address}&info_port={info_port}")
+        if detected.get("protocol"):
+            protocol = detected["protocol"]
+        if detected.get("inbound_tag"):
+            inbound_tag = detected["inbound_tag"]
+        if detected.get("sni"):
+            sni = detected["sni"]
+        if detected.get("reality_public_key"):
+            reality_public_key = detected["reality_public_key"]
+        if detected.get("reality_short_id"):
+            reality_short_id = detected["reality_short_id"]
+        console.print(f"[cyan]Detected:[/cyan] protocol={protocol} tag={inbound_tag} sni={sni}")
+
     body: dict[str, Any] = {
         "address": address,
         "name": name,
-        "api_address": api_address,
-        "api_secret": api_secret,
+        "grpc_address": grpc_address,
+        "protocol": protocol,
+        "inbound_tag": inbound_tag,
+        "sni": sni,
+        "reality_public_key": reality_public_key,
+        "reality_short_id": reality_short_id,
         "port": port,
         "active": active,
     }
@@ -466,8 +499,8 @@ def hosts_info(address: str = typer.Argument(..., help="Host address")):
     """Show details of a host."""
     row = _api("GET", f"/api/hosts/{address}")
     table = Table(show_header=False, box=None, padding=(0, 2))
-    for key in ("address", "name", "port", "api_address", "api_secret", "active"):
-        table.add_row(key, str(row[key]))
+    for key in ("address", "name", "port", "protocol", "grpc_address", "inbound_tag", "sni", "reality_public_key", "reality_short_id", "active"):
+        table.add_row(key, str(row.get(key, "")))
     table.add_row("tags", _fmt_tags(row.get("tags", [])))
     console.print(table)
 
@@ -477,8 +510,12 @@ def hosts_edit(
     address: str = typer.Argument(..., help="Host address"),
     name: Optional[str] = typer.Option(None, "--name", "-n"),
     port: Optional[int] = typer.Option(None, "--port", "-p"),
-    api_address: Optional[str] = typer.Option(None, "--api-address", "-a"),
-    api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s"),
+    grpc_address: Optional[str] = typer.Option(None, "--grpc-address", "-g"),
+    protocol: Optional[str] = typer.Option(None, "--protocol", "-P"),
+    inbound_tag: Optional[str] = typer.Option(None, "--inbound-tag", "-t"),
+    sni: Optional[str] = typer.Option(None, "--sni"),
+    reality_public_key: Optional[str] = typer.Option(None, "--reality-public-key"),
+    reality_short_id: Optional[str] = typer.Option(None, "--reality-short-id"),
     active: Optional[bool] = typer.Option(None, "--active"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags, replaces all (e.g. TEST,VIP)"),
 ):
@@ -488,10 +525,18 @@ def hosts_edit(
         body["name"] = name
     if port is not None:
         body["port"] = port
-    if api_address is not None:
-        body["api_address"] = api_address
-    if api_secret is not None:
-        body["api_secret"] = api_secret
+    if grpc_address is not None:
+        body["grpc_address"] = grpc_address
+    if protocol is not None:
+        body["protocol"] = protocol
+    if inbound_tag is not None:
+        body["inbound_tag"] = inbound_tag
+    if sni is not None:
+        body["sni"] = sni
+    if reality_public_key is not None:
+        body["reality_public_key"] = reality_public_key
+    if reality_short_id is not None:
+        body["reality_short_id"] = reality_short_id
     if active is not None:
         body["active"] = active
     parsed_tags = _parse_tags(tags)
