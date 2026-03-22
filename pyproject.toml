@@ -29,7 +29,7 @@ dependencies = [
   "typing-inspection==0.4.2",
   "typing_extensions==4.15.0",
   "urllib3==2.6.3",
-  "uvicorn==0.41.0",
+  "uvicorn==0.42.0",
   "sqlalchemy>=2.0",
   "alembic>=1.13",
   "textual[syntax]>=2.1.2",
