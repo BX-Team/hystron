@@ -48,7 +48,8 @@ class Traffic(Base):
 class Host(Base):
     __tablename__ = "hosts"
 
-    address: Mapped[str] = mapped_column(Text, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    address: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     port: Mapped[int] = mapped_column(Integer, nullable=False, default=443)
     api_address: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -67,7 +68,7 @@ class Host(Base):
 class HostTag(Base):
     __tablename__ = "host_tags"
 
-    host_address: Mapped[str] = mapped_column(Text, primary_key=True)
+    host_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tag: Mapped[str] = mapped_column(Text, primary_key=True)
 
 

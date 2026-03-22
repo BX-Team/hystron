@@ -366,16 +366,23 @@ def list_hosts(active_only: bool = False) -> list[dict]:
         return [{c.key: getattr(h, c.key) for c in Host.__table__.columns} for h in hosts]
 
 
-def get_host(address: str) -> dict | None:
+def get_host(host_id: int) -> dict | None:
     with SessionLocal() as session:
-        host = session.get(Host, address)
+        host = session.get(Host, host_id)
         if host is None:
             return None
         return {c.key: getattr(host, c.key) for c in Host.__table__.columns}
 
 
-def host_exists(address: str) -> bool:
-    return get_host(address) is not None
+def host_exists(host_id: int) -> bool:
+    return get_host(host_id) is not None
+
+
+def _address_port_exists(address: str, port: int) -> bool:
+    with SessionLocal() as session:
+        return session.scalars(
+            select(Host).where(Host.address == address, Host.port == port)
+        ).one_or_none() is not None
 
 
 def create_host(
@@ -395,33 +402,33 @@ def create_host(
     protocol: str | None = None,
     flow: str | None = None,
 ) -> dict | None:
-    if host_exists(address):
+    if _address_port_exists(address, port):
         return None
     with SessionLocal() as session:
-        session.add(
-            Host(
-                address=address,
-                name=name,
-                port=port,
-                host_type=host_type,
-                api_address=api_address,
-                api_secret=api_secret,
-                active=int(active),
-                inbound_tag=inbound_tag,
-                inbound_port=inbound_port,
-                grpc_address=grpc_address,
-                api_key=api_key,
-                sub_params=sub_params,
-                protocol=protocol,
-                flow=flow,
-            )
+        host = Host(
+            address=address,
+            name=name,
+            port=port,
+            host_type=host_type,
+            api_address=api_address,
+            api_secret=api_secret,
+            active=int(active),
+            inbound_tag=inbound_tag,
+            inbound_port=inbound_port,
+            grpc_address=grpc_address,
+            api_key=api_key,
+            sub_params=sub_params,
+            protocol=protocol,
+            flow=flow,
         )
+        session.add(host)
         session.commit()
-    return get_host(address)
+        session.refresh(host)
+        return {c.key: getattr(host, c.key) for c in Host.__table__.columns}
 
 
 def edit_host(
-    address: str,
+    host_id: int,
     *,
     name: str | None = None,
     port: int | None = None,
@@ -437,7 +444,7 @@ def edit_host(
     flow: str | None = None,
 ) -> bool:
     with SessionLocal() as session:
-        host = session.get(Host, address)
+        host = session.get(Host, host_id)
         if host is None:
             return False
         if name is not None:
@@ -478,12 +485,12 @@ def list_hystron_nodes(active_only: bool = False) -> list[dict]:
         return [{c.key: getattr(h, c.key) for c in Host.__table__.columns} for h in hosts]
 
 
-def delete_host(address: str) -> bool:
+def delete_host(host_id: int) -> bool:
     with SessionLocal() as session:
-        host = session.get(Host, address)
+        host = session.get(Host, host_id)
         if host is None:
             return False
-        session.execute(delete(HostTag).where(HostTag.host_address == address))
+        session.execute(delete(HostTag).where(HostTag.host_id == host_id))
         session.delete(host)
         session.commit()
     return True
@@ -492,17 +499,17 @@ def delete_host(address: str) -> bool:
 # ── tags ──────────────────────────────────────────────────────────────────────
 
 
-def get_host_tags(address: str) -> list[str]:
+def get_host_tags(host_id: int) -> list[str]:
     with SessionLocal() as session:
-        tags = session.scalars(select(HostTag.tag).where(HostTag.host_address == address).order_by(HostTag.tag)).all()
+        tags = session.scalars(select(HostTag.tag).where(HostTag.host_id == host_id).order_by(HostTag.tag)).all()
         return list(tags)
 
 
-def set_host_tags(address: str, tags: list[str]) -> None:
+def set_host_tags(host_id: int, tags: list[str]) -> None:
     with SessionLocal() as session:
-        session.execute(delete(HostTag).where(HostTag.host_address == address))
+        session.execute(delete(HostTag).where(HostTag.host_id == host_id))
         for tag in set(tags):
-            session.add(HostTag(host_address=address, tag=tag))
+            session.add(HostTag(host_id=host_id, tag=tag))
         session.commit()
 
 
@@ -550,11 +557,11 @@ def list_hosts_for_user(username: str, active_only: bool = True) -> list[dict]:
                 text(f"""
                 SELECT h.* FROM hosts h
                 WHERE (
-                    NOT EXISTS (SELECT 1 FROM host_tags ht WHERE ht.host_address = h.address)
+                    NOT EXISTS (SELECT 1 FROM host_tags ht WHERE ht.host_id = h.id)
                     OR EXISTS (
                         SELECT 1 FROM host_tags ht
                         JOIN user_tags ut ON ut.tag = ht.tag
-                        WHERE ht.host_address = h.address AND ut.username = :username
+                        WHERE ht.host_id = h.id AND ut.username = :username
                     )
                 )
                 {where}

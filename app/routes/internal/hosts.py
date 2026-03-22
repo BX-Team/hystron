@@ -64,9 +64,9 @@ class EditBody(BaseModel):
 
 
 def _row_to_dict(row) -> dict:
-    address = row["address"]
     return {
-        "address": address,
+        "id": row["id"],
+        "address": row["address"],
         "name": row["name"],
         "port": row["port"],
         "active": bool(row["active"]),
@@ -80,7 +80,7 @@ def _row_to_dict(row) -> dict:
         "sub_params": row.get("sub_params"),
         "protocol": row.get("protocol"),
         "flow": row.get("flow"),
-        "tags": get_host_tags(address),
+        "tags": get_host_tags(row["id"]),
     }
 
 
@@ -115,30 +115,31 @@ async def hosts_create(body: CreateBody):
     )
     if result is None:
         return JSONResponse({"error": "already exists"}, status_code=409)
+    host_id = result["id"]
     if body.tags:
-        set_host_tags(address, body.tags)
+        set_host_tags(host_id, body.tags)
 
-    host_row = get_host(address)
+    host_row = get_host(host_id)
     if body.host_type == "hystron_node" and host_row:
         asyncio.create_task(sync_new_host(host_row))
 
     return _row_to_dict(host_row)
 
 
-@router.get("/hosts/{address:path}")
-def hosts_get(address: str):
-    row = get_host(address)
+@router.get("/hosts/{host_id}")
+def hosts_get(host_id: int):
+    row = get_host(host_id)
     if not row:
         return JSONResponse({"error": "not found"}, status_code=404)
     return _row_to_dict(row)
 
 
-@router.patch("/hosts/{address:path}")
-def hosts_edit(address: str, body: EditBody):
-    if not host_exists(address):
+@router.patch("/hosts/{host_id}")
+def hosts_edit(host_id: int, body: EditBody):
+    if not host_exists(host_id):
         return JSONResponse({"error": "not found"}, status_code=404)
     edit_host(
-        address,
+        host_id,
         name=body.name,
         port=body.port,
         active=body.active,
@@ -153,12 +154,12 @@ def hosts_edit(address: str, body: EditBody):
         flow=body.flow,
     )
     if body.tags is not None:
-        set_host_tags(address, body.tags)
-    return _row_to_dict(get_host(address))
+        set_host_tags(host_id, body.tags)
+    return _row_to_dict(get_host(host_id))
 
 
-@router.delete("/hosts/{address:path}")
-def hosts_delete(address: str):
-    if not delete_host(address):
+@router.delete("/hosts/{host_id}")
+def hosts_delete(host_id: int):
+    if not delete_host(host_id):
         return JSONResponse({"error": "not found"}, status_code=404)
     return {"ok": True}
