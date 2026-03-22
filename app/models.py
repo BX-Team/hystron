@@ -51,9 +51,17 @@ class Host(Base):
     address: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     port: Mapped[int] = mapped_column(Integer, nullable=False, default=443)
-    api_address: Mapped[str] = mapped_column(Text, nullable=False)
-    api_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    api_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    host_type: Mapped[str] = mapped_column(Text, nullable=False, default="hysteria2")
+    inbound_tag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inbound_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    grpc_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sub_params: Mapped[str | None] = mapped_column(Text, nullable=True)
+    protocol: Mapped[str | None] = mapped_column(Text, nullable=True)
+    flow: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HostTag(Base):

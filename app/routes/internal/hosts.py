@@ -17,24 +17,50 @@ from app.database import (
 
 router = APIRouter(prefix="/api", tags=["Hosts"])
 
+_HOST_FIELDS = (
+    "address", "name", "port", "active", "host_type",
+    "api_address", "api_secret",
+    "inbound_tag", "inbound_port", "grpc_address", "api_key",
+    "sub_params", "protocol", "flow",
+)
+
 
 class CreateBody(BaseModel):
     address: str
     name: str
-    api_address: str
-    api_secret: str
     port: int = 443
     active: bool = True
+    host_type: str = "hysteria2"
     tags: list[str] = []
+    # hysteria2 fields
+    api_address: Optional[str] = None
+    api_secret: Optional[str] = None
+    # hystron_node fields
+    inbound_tag: Optional[str] = None
+    inbound_port: Optional[int] = None
+    grpc_address: Optional[str] = None
+    api_key: Optional[str] = None
+    sub_params: Optional[str] = None
+    protocol: Optional[str] = None
+    flow: Optional[str] = None
 
 
 class EditBody(BaseModel):
     name: Optional[str] = None
     port: Optional[int] = None
-    api_address: Optional[str] = None
-    api_secret: Optional[str] = None
     active: Optional[bool] = None
     tags: Optional[list[str]] = None
+    # hysteria2 fields
+    api_address: Optional[str] = None
+    api_secret: Optional[str] = None
+    # hystron_node fields
+    inbound_tag: Optional[str] = None
+    inbound_port: Optional[int] = None
+    grpc_address: Optional[str] = None
+    api_key: Optional[str] = None
+    sub_params: Optional[str] = None
+    protocol: Optional[str] = None
+    flow: Optional[str] = None
 
 
 def _row_to_dict(row) -> dict:
@@ -43,9 +69,17 @@ def _row_to_dict(row) -> dict:
         "address": address,
         "name": row["name"],
         "port": row["port"],
-        "api_address": row["api_address"],
-        "api_secret": row["api_secret"],
         "active": bool(row["active"]),
+        "host_type": row.get("host_type", "hysteria2"),
+        "api_address": row.get("api_address"),
+        "api_secret": row.get("api_secret"),
+        "inbound_tag": row.get("inbound_tag"),
+        "inbound_port": row.get("inbound_port"),
+        "grpc_address": row.get("grpc_address"),
+        "api_key": row.get("api_key"),
+        "sub_params": row.get("sub_params"),
+        "protocol": row.get("protocol"),
+        "flow": row.get("flow"),
         "tags": get_host_tags(address),
     }
 
@@ -56,24 +90,39 @@ def hosts_list():
 
 
 @router.post("/hosts", status_code=201)
-def hosts_create(body: CreateBody):
+async def hosts_create(body: CreateBody):
+    import asyncio
+    from app.node_sync import sync_new_host
+
     address = body.address.strip()
     if not address:
         return JSONResponse({"error": "address required"}, status_code=400)
     result = create_host(
         address,
         body.name,
-        body.api_address,
-        body.api_secret,
+        host_type=body.host_type,
         port=body.port,
         active=body.active,
+        api_address=body.api_address,
+        api_secret=body.api_secret,
+        inbound_tag=body.inbound_tag,
+        inbound_port=body.inbound_port,
+        grpc_address=body.grpc_address,
+        api_key=body.api_key,
+        sub_params=body.sub_params,
+        protocol=body.protocol,
+        flow=body.flow,
     )
     if result is None:
         return JSONResponse({"error": "already exists"}, status_code=409)
     if body.tags:
         set_host_tags(address, body.tags)
-    result["tags"] = get_host_tags(address)
-    return result
+
+    host_row = get_host(address)
+    if body.host_type == "hystron_node" and host_row:
+        asyncio.create_task(sync_new_host(host_row))
+
+    return _row_to_dict(host_row)
 
 
 @router.get("/hosts/{address:path}")
@@ -92,9 +141,16 @@ def hosts_edit(address: str, body: EditBody):
         address,
         name=body.name,
         port=body.port,
+        active=body.active,
         api_address=body.api_address,
         api_secret=body.api_secret,
-        active=body.active,
+        inbound_tag=body.inbound_tag,
+        inbound_port=body.inbound_port,
+        grpc_address=body.grpc_address,
+        api_key=body.api_key,
+        sub_params=body.sub_params,
+        protocol=body.protocol,
+        flow=body.flow,
     )
     if body.tags is not None:
         set_host_tags(address, body.tags)

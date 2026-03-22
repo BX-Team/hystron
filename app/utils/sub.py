@@ -52,15 +52,37 @@ def get_templates_search_dirs() -> list[str]:
     return dirs
 
 
+def _make_node_uri(h: dict, uname: str, pwd: str) -> str:
+    """Build a proxy URI for a hystron_node host (vless or trojan)."""
+    proto = (h.get("protocol") or "").lower()
+    addr = h["address"]
+    port = h.get("inbound_port") or h["port"]
+    label = h["name"]
+    sub_params = h.get("sub_params") or ""
+
+    if proto == "vless":
+        flow = h.get("flow") or ""
+        qs = sub_params
+        if flow:
+            qs = f"{qs}&flow={flow}" if qs else f"flow={flow}"
+        return f"vless://{pwd}@{addr}:{port}?{qs}#{label}" if qs else f"vless://{pwd}@{addr}:{port}#{label}"
+    elif proto == "trojan":
+        qs = sub_params
+        return f"trojan://{pwd}@{addr}:{port}?{qs}#{label}" if qs else f"trojan://{pwd}@{addr}:{port}#{label}"
+    else:
+        # fallback: hysteria2
+        return f"hysteria2://{uname}:{pwd}@{addr}:{port}/?sni={addr}#{label}"
+
+
 def make_links(uname: str, pwd: str) -> list[dict]:
-    return [
-        {
-            "uri": f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}",
-            "label": h["name"],
-            "host": h["address"],
-        }
-        for h in list_hosts_for_user(uname, active_only=True)
-    ]
+    links = []
+    for h in list_hosts_for_user(uname, active_only=True):
+        if h.get("host_type") == "hystron_node":
+            uri = _make_node_uri(h, uname, pwd)
+        else:
+            uri = f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}"
+        links.append({"uri": uri, "label": h["name"], "host": h["address"], "protocol": h.get("protocol") or "hysteria2"})
+    return links
 
 
 def fmt_bytes(n: int) -> str:
@@ -107,8 +129,29 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
     proxy_names = []
     for h in hosts:
         proxy_names.append(h["name"])
-        config["outbounds"].append(
-            {
+        if h.get("host_type") == "hystron_node":
+            proto = (h.get("protocol") or "").lower()
+            port = h.get("inbound_port") or h["port"]
+            if proto == "vless":
+                outbound: dict = {
+                    "type": "vless",
+                    "tag": h["name"],
+                    "server": h["address"],
+                    "server_port": port,
+                    "uuid": pwd,
+                }
+                if h.get("flow"):
+                    outbound["flow"] = h["flow"]
+            else:
+                outbound = {
+                    "type": "trojan",
+                    "tag": h["name"],
+                    "server": h["address"],
+                    "server_port": port,
+                    "password": pwd,
+                }
+        else:
+            outbound = {
                 "type": "hysteria2",
                 "tag": h["name"],
                 "server": h["address"],
@@ -116,7 +159,7 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
                 "password": f"{uname}:{pwd}",
                 "tls": {"enabled": True, "server_name": h["address"]},
             }
-        )
+        config["outbounds"].append(outbound)
     config["outbounds"][0]["outbounds"] = proxy_names
     return PlainTextResponse(
         json.dumps(config, indent=4, ensure_ascii=False),
@@ -127,15 +170,40 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
 
 def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
-    proxies_yaml = "".join(
-        f"  - name: {h['name']}\n"
-        f"    type: hysteria2\n"
-        f"    server: {h['address']}\n"
-        f"    port: {h['port']}\n"
-        f"    password: {uname}:{pwd}\n"
-        f"    skip-cert-verify: true\n"
-        for h in hosts
-    )
+    proxy_lines = []
+    for h in hosts:
+        if h.get("host_type") == "hystron_node":
+            proto = (h.get("protocol") or "").lower()
+            port = h.get("inbound_port") or h["port"]
+            if proto == "vless":
+                entry = (
+                    f"  - name: {h['name']}\n"
+                    f"    type: vless\n"
+                    f"    server: {h['address']}\n"
+                    f"    port: {port}\n"
+                    f"    uuid: {pwd}\n"
+                    f"    skip-cert-verify: true\n"
+                )
+            else:
+                entry = (
+                    f"  - name: {h['name']}\n"
+                    f"    type: trojan\n"
+                    f"    server: {h['address']}\n"
+                    f"    port: {port}\n"
+                    f"    password: {pwd}\n"
+                    f"    skip-cert-verify: true\n"
+                )
+        else:
+            entry = (
+                f"  - name: {h['name']}\n"
+                f"    type: hysteria2\n"
+                f"    server: {h['address']}\n"
+                f"    port: {h['port']}\n"
+                f"    password: {uname}:{pwd}\n"
+                f"    skip-cert-verify: true\n"
+            )
+        proxy_lines.append(entry)
+    proxies_yaml = "".join(proxy_lines)
     proxy_names_yaml = "\n      - ".join(h["name"] for h in hosts)
     template = open(get_template_file("clash.yaml")).read()
     return PlainTextResponse(
@@ -187,9 +255,13 @@ def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
 
 def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     hosts = list_hosts_for_user(uname, active_only=True)
-    body = "\n".join(
-        f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}" for h in hosts
-    )
+    uris = []
+    for h in hosts:
+        if h.get("host_type") == "hystron_node":
+            uris.append(_make_node_uri(h, uname, pwd))
+        else:
+            uris.append(f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}")
+    body = "\n".join(uris)
     return PlainTextResponse(
         base64.b64encode(body.encode()).decode(),
         headers=base_headers,

@@ -68,8 +68,8 @@ def upgrade() -> None:
             sa.Column("address", sa.Text, primary_key=True),
             sa.Column("name", sa.Text, nullable=False),
             sa.Column("port", sa.Integer, nullable=False, server_default="443"),
-            sa.Column("api_address", sa.Text, nullable=False),
-            sa.Column("api_secret", sa.Text, nullable=False),
+            sa.Column("api_address", sa.Text, nullable=True),
+            sa.Column("api_secret", sa.Text, nullable=True),
             sa.Column("active", sa.Integer, nullable=False, server_default="1"),
         )
 

@@ -422,14 +422,15 @@ def hosts_list():
     if not rows:
         console.print("No hosts found.")
         return
-    table = Table("address", "name", "port", "active", "api_address", "tags")
+    table = Table("address", "name", "port", "active", "type", "protocol", "tags")
     for h in rows:
         table.add_row(
             h["address"],
             h["name"],
             str(h["port"]),
             "[green]yes[/green]" if h["active"] else "[red]no[/red]",
-            h["api_address"],
+            h.get("host_type", "hysteria2"),
+            h.get("protocol") or "—",
             _fmt_tags(h.get("tags", [])),
         )
     console.print(table)
@@ -439,21 +440,48 @@ def hosts_list():
 def hosts_create(
     address: str = typer.Argument(..., help="Host address (domain or IP)"),
     name: str = typer.Option(..., "--name", "-n", help="Display name"),
-    api_address: str = typer.Option(..., "--api-address", "-a", help="Hysteria2 API address"),
-    api_secret: str = typer.Option(..., "--api-secret", "-s", help="Hysteria2 API secret"),
+    host_type: str = typer.Option("hysteria2", "--type", "-t", help="Host type: hysteria2 or hystron_node"),
     port: int = typer.Option(443, "--port", "-p", help="Port"),
     active: bool = typer.Option(True, "--active", help="Enable host"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags (e.g. TEST,VIP)"),
+    # hysteria2 options
+    api_address: Optional[str] = typer.Option(None, "--api-address", "-a", help="Hysteria2 API address"),
+    api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s", help="Hysteria2 API secret"),
+    # hystron_node options
+    inbound_tag: Optional[str] = typer.Option(None, "--inbound-tag", help="Xray inbound tag"),
+    inbound_port: Optional[int] = typer.Option(None, "--inbound-port", help="Inbound port for subscriptions"),
+    grpc_address: Optional[str] = typer.Option(None, "--grpc-address", help="Node gRPC address (host:port)"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Node API key"),
+    protocol: Optional[str] = typer.Option(None, "--protocol", help="Protocol: vless or trojan"),
+    flow: Optional[str] = typer.Option(None, "--flow", help="VLESS flow (e.g. xtls-rprx-vision)"),
+    sub_params: Optional[str] = typer.Option(None, "--sub-params", help="Query params for subscription URI"),
 ):
-    """Add a new Hysteria2 host."""
+    """Add a new host (hysteria2 or hystron_node)."""
     body: dict[str, Any] = {
         "address": address,
         "name": name,
-        "api_address": api_address,
-        "api_secret": api_secret,
+        "host_type": host_type,
         "port": port,
         "active": active,
     }
+    if api_address is not None:
+        body["api_address"] = api_address
+    if api_secret is not None:
+        body["api_secret"] = api_secret
+    if inbound_tag is not None:
+        body["inbound_tag"] = inbound_tag
+    if inbound_port is not None:
+        body["inbound_port"] = inbound_port
+    if grpc_address is not None:
+        body["grpc_address"] = grpc_address
+    if api_key is not None:
+        body["api_key"] = api_key
+    if protocol is not None:
+        body["protocol"] = protocol
+    if flow is not None:
+        body["flow"] = flow
+    if sub_params is not None:
+        body["sub_params"] = sub_params
     parsed_tags = _parse_tags(tags)
     if parsed_tags is not None:
         body["tags"] = parsed_tags
@@ -466,8 +494,17 @@ def hosts_info(address: str = typer.Argument(..., help="Host address")):
     """Show details of a host."""
     row = _api("GET", f"/api/hosts/{address}")
     table = Table(show_header=False, box=None, padding=(0, 2))
-    for key in ("address", "name", "port", "api_address", "api_secret", "active"):
-        table.add_row(key, str(row[key]))
+    host_type = row.get("host_type", "hysteria2")
+    for key in ("address", "name", "port", "active", "host_type"):
+        table.add_row(key, str(row.get(key, "")))
+    if host_type == "hysteria2":
+        table.add_row("api_address", str(row.get("api_address", "")))
+        table.add_row("api_secret", str(row.get("api_secret", "")))
+    else:
+        for key in ("grpc_address", "api_key", "inbound_tag", "inbound_port", "protocol", "flow", "sub_params"):
+            val = row.get(key)
+            if val is not None:
+                table.add_row(key, str(val))
     table.add_row("tags", _fmt_tags(row.get("tags", [])))
     console.print(table)
 
@@ -477,10 +514,19 @@ def hosts_edit(
     address: str = typer.Argument(..., help="Host address"),
     name: Optional[str] = typer.Option(None, "--name", "-n"),
     port: Optional[int] = typer.Option(None, "--port", "-p"),
-    api_address: Optional[str] = typer.Option(None, "--api-address", "-a"),
-    api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s"),
     active: Optional[bool] = typer.Option(None, "--active"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags, replaces all (e.g. TEST,VIP)"),
+    # hysteria2
+    api_address: Optional[str] = typer.Option(None, "--api-address", "-a"),
+    api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s"),
+    # hystron_node
+    inbound_tag: Optional[str] = typer.Option(None, "--inbound-tag"),
+    inbound_port: Optional[int] = typer.Option(None, "--inbound-port"),
+    grpc_address: Optional[str] = typer.Option(None, "--grpc-address"),
+    api_key: Optional[str] = typer.Option(None, "--api-key"),
+    protocol: Optional[str] = typer.Option(None, "--protocol"),
+    flow: Optional[str] = typer.Option(None, "--flow"),
+    sub_params: Optional[str] = typer.Option(None, "--sub-params"),
 ):
     """Edit an existing host."""
     body: dict[str, Any] = {}
@@ -488,12 +534,26 @@ def hosts_edit(
         body["name"] = name
     if port is not None:
         body["port"] = port
+    if active is not None:
+        body["active"] = active
     if api_address is not None:
         body["api_address"] = api_address
     if api_secret is not None:
         body["api_secret"] = api_secret
-    if active is not None:
-        body["active"] = active
+    if inbound_tag is not None:
+        body["inbound_tag"] = inbound_tag
+    if inbound_port is not None:
+        body["inbound_port"] = inbound_port
+    if grpc_address is not None:
+        body["grpc_address"] = grpc_address
+    if api_key is not None:
+        body["api_key"] = api_key
+    if protocol is not None:
+        body["protocol"] = protocol
+    if flow is not None:
+        body["flow"] = flow
+    if sub_params is not None:
+        body["sub_params"] = sub_params
     parsed_tags = _parse_tags(tags)
     if parsed_tags is not None:
         body["tags"] = parsed_tags

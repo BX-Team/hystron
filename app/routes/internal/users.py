@@ -58,7 +58,10 @@ def users_list():
 
 
 @router.post("/users", status_code=201)
-def users_create(body: CreateBody):
+async def users_create(body: CreateBody):
+    import asyncio
+    from app.node_sync import sync_user_to_all_nodes
+
     username = body.username.strip()
     if not username:
         return JSONResponse({"error": "username required"}, status_code=400)
@@ -73,6 +76,8 @@ def users_create(body: CreateBody):
     if body.tags:
         set_user_tags(username, body.tags)
     result["tags"] = get_user_tags(username)
+
+    asyncio.create_task(sync_user_to_all_nodes(result, active=True))
     return result
 
 
@@ -85,9 +90,15 @@ def users_get(username: str):
 
 
 @router.patch("/users/{username}")
-def users_edit(username: str, body: EditBody):
+async def users_edit(username: str, body: EditBody):
+    import asyncio
+    from app.node_sync import sync_user_to_all_nodes
+
     if not user_exists(username):
         return JSONResponse({"error": "not found"}, status_code=404)
+
+    old_user = get_user(username)
+
     edit_user(
         username,
         password=body.password,
@@ -99,13 +110,33 @@ def users_edit(username: str, body: EditBody):
     )
     if body.tags is not None:
         set_user_tags(username, body.tags)
-    return _row_to_dict(get_user(username))
+
+    updated = get_user(username)
+    if updated is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    if body.password is not None and old_user is not None:
+        # Credentials changed — re-add with new password
+        asyncio.create_task(sync_user_to_all_nodes(old_user, active=False))
+        asyncio.create_task(sync_user_to_all_nodes(updated, active=True))
+    elif body.active is not None:
+        asyncio.create_task(sync_user_to_all_nodes(updated, active=body.active))
+
+    return _row_to_dict(updated)
 
 
 @router.delete("/users/{username}")
-def users_delete(username: str):
+async def users_delete(username: str):
+    import asyncio
+    from app.node_sync import sync_user_to_all_nodes
+
+    user = get_user(username)
+    if user is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
     if not delete_user(username):
         return JSONResponse({"error": "not found"}, status_code=404)
+
+    asyncio.create_task(sync_user_to_all_nodes(user, active=False))
     return {"ok": True}
 
 

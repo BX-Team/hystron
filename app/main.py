@@ -6,6 +6,7 @@ from fastapi import FastAPI, Response, status
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from .node_sync import full_resync
 from .polling import poll_hysteria
 from .routes.internal import config, hosts, tags, traffic, users
 from .routes.public import auth, sub
@@ -13,6 +14,7 @@ from .routes.public import auth, sub
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    asyncio.create_task(full_resync())
     task = asyncio.create_task(poll_hysteria())
     yield
     task.cancel()

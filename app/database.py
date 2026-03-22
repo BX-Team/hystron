@@ -381,11 +381,19 @@ def host_exists(address: str) -> bool:
 def create_host(
     address: str,
     name: str,
-    api_address: str,
-    api_secret: str,
     *,
+    host_type: str = "hysteria2",
     port: int = 443,
     active: bool = True,
+    api_address: str | None = None,
+    api_secret: str | None = None,
+    inbound_tag: str | None = None,
+    inbound_port: int | None = None,
+    grpc_address: str | None = None,
+    api_key: str | None = None,
+    sub_params: str | None = None,
+    protocol: str | None = None,
+    flow: str | None = None,
 ) -> dict | None:
     if host_exists(address):
         return None
@@ -395,20 +403,21 @@ def create_host(
                 address=address,
                 name=name,
                 port=port,
+                host_type=host_type,
                 api_address=api_address,
                 api_secret=api_secret,
                 active=int(active),
+                inbound_tag=inbound_tag,
+                inbound_port=inbound_port,
+                grpc_address=grpc_address,
+                api_key=api_key,
+                sub_params=sub_params,
+                protocol=protocol,
+                flow=flow,
             )
         )
         session.commit()
-    return {
-        "address": address,
-        "name": name,
-        "port": port,
-        "api_address": api_address,
-        "api_secret": api_secret,
-        "active": active,
-    }
+    return get_host(address)
 
 
 def edit_host(
@@ -416,9 +425,16 @@ def edit_host(
     *,
     name: str | None = None,
     port: int | None = None,
+    active: bool | None = None,
     api_address: str | None = None,
     api_secret: str | None = None,
-    active: bool | None = None,
+    inbound_tag: str | None = None,
+    inbound_port: int | None = None,
+    grpc_address: str | None = None,
+    api_key: str | None = None,
+    sub_params: str | None = None,
+    protocol: str | None = None,
+    flow: str | None = None,
 ) -> bool:
     with SessionLocal() as session:
         host = session.get(Host, address)
@@ -428,14 +444,38 @@ def edit_host(
             host.name = name
         if port is not None:
             host.port = port
+        if active is not None:
+            host.active = int(active)
         if api_address is not None:
             host.api_address = api_address
         if api_secret is not None:
             host.api_secret = api_secret
-        if active is not None:
-            host.active = int(active)
+        if inbound_tag is not None:
+            host.inbound_tag = inbound_tag
+        if inbound_port is not None:
+            host.inbound_port = inbound_port
+        if grpc_address is not None:
+            host.grpc_address = grpc_address
+        if api_key is not None:
+            host.api_key = api_key
+        if sub_params is not None:
+            host.sub_params = sub_params
+        if protocol is not None:
+            host.protocol = protocol
+        if flow is not None:
+            host.flow = flow
         session.commit()
     return True
+
+
+def list_hystron_nodes(active_only: bool = False) -> list[dict]:
+    """Return only hystron_node type hosts."""
+    with SessionLocal() as session:
+        q = select(Host).where(Host.host_type == "hystron_node").order_by(Host.address)
+        if active_only:
+            q = q.where(Host.active == 1)
+        hosts = session.scalars(q).all()
+        return [{c.key: getattr(h, c.key) for c in Host.__table__.columns} for h in hosts]
 
 
 def delete_host(address: str) -> bool:

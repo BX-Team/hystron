@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 import httpx
@@ -47,19 +48,33 @@ _BROWSER_KW = (
 @router.get("/hosts/status", include_in_schema=False)
 async def hosts_status():
     """Return online/offline status for each active host (checked via their internal API)."""
+    from app.node_client import get_node_status
+
     hosts = list_hosts(active_only=True)
     result = {}
     async with httpx.AsyncClient(timeout=3) as client:
         for h in hosts:
-            api_url = h["api_address"].rstrip("/")
-            try:
-                r = await client.get(
-                    f"{api_url}/traffic",
-                    headers={"Authorization": h["api_secret"]},
-                )
-                result[h["address"]] = "online" if r.status_code == 200 else "offline"
-            except Exception:
-                result[h["address"]] = "offline"
+            if h.get("host_type") == "hystron_node":
+                try:
+                    loop = asyncio.get_event_loop()
+                    status = await loop.run_in_executor(None, get_node_status, h)
+                    result[h["address"]] = "online" if status.get("xray_running") else "offline"
+                except Exception:
+                    result[h["address"]] = "offline"
+            else:
+                api_address = h.get("api_address") or ""
+                if not api_address:
+                    result[h["address"]] = "offline"
+                    continue
+                api_url = api_address.rstrip("/")
+                try:
+                    r = await client.get(
+                        f"{api_url}/traffic",
+                        headers={"Authorization": h.get("api_secret") or ""},
+                    )
+                    result[h["address"]] = "online" if r.status_code == 200 else "offline"
+                except Exception:
+                    result[h["address"]] = "offline"
     return result
 
 

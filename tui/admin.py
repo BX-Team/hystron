@@ -19,6 +19,7 @@ from textual.widgets import (
     Header,
     Input,
     Label,
+    Select,
     Static,
     Switch,
     TabbedContent,
@@ -429,11 +430,27 @@ class HostCreateModal(BaseModal):
                 yield Input(placeholder="Address      (e.g. vpn.example.com)", id="address")
                 yield Input(placeholder="Name         (display label)", id="name")
                 yield Input(placeholder="Port         (default 443)", id="port")
-                yield Input(
-                    placeholder="API address  (e.g. http://127.0.0.1:25413)",
-                    id="api_address",
+                yield Select(
+                    [("hysteria2", "hysteria2"), ("hystron_node", "hystron_node")],
+                    value="hysteria2",
+                    id="host_type",
                 )
+                # hysteria2 fields
+                yield Input(placeholder="API address  (e.g. http://127.0.0.1:25413)", id="api_address")
                 yield Input(placeholder="API secret", id="api_secret")
+                # hystron_node fields (hidden initially)
+                yield Input(placeholder="gRPC address (e.g. 127.0.0.1:50051)", id="grpc_address", classes="node-field")
+                yield Input(placeholder="API key", id="api_key", classes="node-field")
+                yield Input(placeholder="Inbound tag  (e.g. vless-reality-in)", id="inbound_tag", classes="node-field")
+                yield Input(placeholder="Inbound port (for subscriptions)", id="inbound_port", classes="node-field")
+                yield Select(
+                    [("vless", "vless"), ("trojan", "trojan")],
+                    value="vless",
+                    id="protocol",
+                    classes="node-field",
+                )
+                yield Input(placeholder="Flow  (e.g. xtls-rprx-vision, empty for none)", id="flow", classes="node-field")
+                yield Input(placeholder="Sub params (e.g. security=reality&sni=example.com)", id="sub_params", classes="node-field")
                 yield Input(placeholder="Tags (comma-separated, e.g. TEST,VIP)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
@@ -443,7 +460,19 @@ class HostCreateModal(BaseModal):
                 yield Button("Cancel", id="cancel", variant="error")
 
     async def on_mount(self) -> None:
+        self._update_visibility("hysteria2")
         self.set_focus(self.query_one("#address"))
+
+    def _update_visibility(self, host_type: str) -> None:
+        is_node = host_type == "hystron_node"
+        for w in self.query(".node-field"):
+            w.display = is_node
+        self.query_one("#api_address").display = not is_node
+        self.query_one("#api_secret").display = not is_node
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "host_type":
+            self._update_visibility(str(event.value))
 
     async def key_enter(self) -> None:
         if not self.query_one("#active").has_focus and not self.query_one("#cancel").has_focus:
@@ -457,8 +486,7 @@ class HostCreateModal(BaseModal):
                 return
             name = self.query_one("#name").value.strip() or address
             port_raw = self.query_one("#port").value.strip()
-            api_address = self.query_one("#api_address").value.strip()
-            api_secret = self.query_one("#api_secret").value.strip()
+            host_type = str(self.query_one("#host_type").value)
             tags_raw = self.query_one("#tags").value.strip()
             active = self.query_one("#active").value
             try:
@@ -466,7 +494,22 @@ class HostCreateModal(BaseModal):
             except ValueError:
                 self.notify("Port must be a number", severity="error", title="Error")
                 return
-            result = create_host(address, name, api_address, api_secret, port=port, active=active)
+
+            kwargs: dict = {"host_type": host_type, "port": port, "active": active}
+            if host_type == "hysteria2":
+                kwargs["api_address"] = self.query_one("#api_address").value.strip()
+                kwargs["api_secret"] = self.query_one("#api_secret").value.strip()
+            else:
+                kwargs["grpc_address"] = self.query_one("#grpc_address").value.strip() or None
+                kwargs["api_key"] = self.query_one("#api_key").value.strip() or None
+                kwargs["inbound_tag"] = self.query_one("#inbound_tag").value.strip() or None
+                ip_raw = self.query_one("#inbound_port").value.strip()
+                kwargs["inbound_port"] = int(ip_raw) if ip_raw else None
+                kwargs["protocol"] = str(self.query_one("#protocol").value)
+                kwargs["flow"] = self.query_one("#flow").value.strip() or None
+                kwargs["sub_params"] = self.query_one("#sub_params").value.strip() or None
+
+            result = create_host(address, name, **kwargs)
             if result is None:
                 self.notify(f"Host '{address}' already exists", severity="error", title="Error")
                 return
@@ -485,6 +528,7 @@ class HostEditModal(BaseModal):
         super().__init__(*args, **kwargs)
         self.address = address
         self.on_close = on_close
+        self._host_type = "hysteria2"
 
     def compose(self) -> ComposeResult:
         with Container(classes="modal-box"):
@@ -492,8 +536,17 @@ class HostEditModal(BaseModal):
             with Vertical(classes="input-container"):
                 yield Input(placeholder="Name        (empty = keep)", id="name")
                 yield Input(placeholder="Port        (empty = keep)", id="port")
+                # hysteria2 fields
                 yield Input(placeholder="API address (empty = keep)", id="api_address")
                 yield Input(placeholder="API secret  (empty = keep)", id="api_secret")
+                # hystron_node fields
+                yield Input(placeholder="gRPC address (empty = keep)", id="grpc_address", classes="node-field")
+                yield Input(placeholder="API key      (empty = keep)", id="api_key", classes="node-field")
+                yield Input(placeholder="Inbound tag  (empty = keep)", id="inbound_tag", classes="node-field")
+                yield Input(placeholder="Inbound port (empty = keep)", id="inbound_port", classes="node-field")
+                yield Input(placeholder="Protocol     (vless/trojan, empty = keep)", id="protocol", classes="node-field")
+                yield Input(placeholder="Flow         (empty = keep)", id="flow", classes="node-field")
+                yield Input(placeholder="Sub params   (empty = keep)", id="sub_params", classes="node-field")
                 yield Input(placeholder="Tags (comma-separated, empty = keep)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
@@ -505,11 +558,29 @@ class HostEditModal(BaseModal):
     async def on_mount(self) -> None:
         row = get_host(self.address)
         if row:
+            self._host_type = row.get("host_type") or "hysteria2"
             self.query_one("#active").value = bool(row["active"])
+            if row.get("api_address"):
+                self.query_one("#api_address").value = row["api_address"]
+            if row.get("api_secret"):
+                self.query_one("#api_secret").value = row["api_secret"]
+            for field in ("grpc_address", "api_key", "inbound_tag", "protocol", "flow", "sub_params"):
+                if row.get(field):
+                    self.query_one(f"#{field}").value = str(row[field])
+            if row.get("inbound_port"):
+                self.query_one("#inbound_port").value = str(row["inbound_port"])
+        self._update_visibility()
         existing_tags = get_host_tags(self.address)
         if existing_tags:
             self.query_one("#tags").value = ", ".join(existing_tags)
         self.set_focus(self.query_one("#name"))
+
+    def _update_visibility(self) -> None:
+        is_node = self._host_type == "hystron_node"
+        for w in self.query(".node-field"):
+            w.display = is_node
+        self.query_one("#api_address").display = not is_node
+        self.query_one("#api_secret").display = not is_node
 
     async def key_enter(self) -> None:
         if not self.query_one("#active").has_focus and not self.query_one("#cancel").has_focus:
@@ -519,8 +590,6 @@ class HostEditModal(BaseModal):
         if event.button.id == "save":
             name = self.query_one("#name").value.strip() or None
             port_raw = self.query_one("#port").value.strip()
-            api_address = self.query_one("#api_address").value.strip() or None
-            api_secret = self.query_one("#api_secret").value.strip() or None
             tags_raw = self.query_one("#tags").value.strip()
             active = self.query_one("#active").value
             try:
@@ -528,14 +597,22 @@ class HostEditModal(BaseModal):
             except ValueError:
                 self.notify("Port must be a number", severity="error", title="Error")
                 return
-            edit_host(
-                self.address,
-                name=name,
-                port=port,
-                api_address=api_address,
-                api_secret=api_secret,
-                active=active,
-            )
+
+            kwargs: dict = {"name": name, "port": port, "active": active}
+            if self._host_type == "hysteria2":
+                kwargs["api_address"] = self.query_one("#api_address").value.strip() or None
+                kwargs["api_secret"] = self.query_one("#api_secret").value.strip() or None
+            else:
+                kwargs["grpc_address"] = self.query_one("#grpc_address").value.strip() or None
+                kwargs["api_key"] = self.query_one("#api_key").value.strip() or None
+                kwargs["inbound_tag"] = self.query_one("#inbound_tag").value.strip() or None
+                ip_raw = self.query_one("#inbound_port").value.strip()
+                kwargs["inbound_port"] = int(ip_raw) if ip_raw else None
+                kwargs["protocol"] = self.query_one("#protocol").value.strip() or None
+                kwargs["flow"] = self.query_one("#flow").value.strip() or None
+                kwargs["sub_params"] = self.query_one("#sub_params").value.strip() or None
+
+            edit_host(self.address, **kwargs)
             if tags_raw is not None:
                 tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
                 set_host_tags(self.address, tags)
@@ -861,7 +938,7 @@ class HostsContent(Static):
             self.table.add_columns("  (no hosts — press 'c' to create one)  ")
             return
 
-        columns = ["#", "Address", "Name", "Port", "Active", "Tags", "API Address"]
+        columns = ["#", "Address", "Name", "Port", "Active", "Type", "Protocol", "Tags"]
         data = [
             [
                 str(idx),
@@ -869,8 +946,9 @@ class HostsContent(Static):
                 r["name"],
                 str(r["port"]),
                 "\u2714" if r["active"] else "\u2716",
+                r.get("host_type") or "hysteria2",
+                r.get("protocol") or "—",
                 ", ".join(get_host_tags(r["address"])) or "—",
-                r["api_address"],
             ]
             for idx, r in enumerate(rows, 1)
         ]
