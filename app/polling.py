@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from .database import (
+from .db.database import (
     edit_user,
     get_config,
     get_traffic,
@@ -12,7 +12,7 @@ from .database import (
     record_traffic_batch,
     reset_traffic_limited_users,
 )
-from .node_client import get_traffic_stats, reset_traffic_stats
+from .node.client import get_traffic_stats, reset_traffic_stats
 
 _last_reset_date = None
 
@@ -25,8 +25,8 @@ async def reset_daily_limits():
 
     if _last_reset_date != current_date and now.hour == 0 and now.minute < 10:
         try:
-            from .database import list_users
-            from .node_sync import sync_user_to_all_nodes
+            from .db.database import list_users
+            from .node.sync import sync_user_to_all_nodes
 
             count = reset_traffic_limited_users()
             if count > 0:
@@ -88,7 +88,7 @@ async def poll_hysteria2(host: dict, client: httpx.AsyncClient) -> None:
                         if total and total[0]["day"] >= user["traffic_limit"]:
                             edit_user(username, active=False)
                             await client.post(f"{api_address}/kick", json={"id": username}, headers=headers)
-                            from .node_sync import sync_user_to_all_nodes
+                            from .node.sync import sync_user_to_all_nodes
 
                             await sync_user_to_all_nodes(user, active=False)
                             print(f"kicked {username} on {address}: daily traffic limit exceeded")
@@ -126,7 +126,7 @@ async def poll_hystron_node(host: dict) -> None:
                 total = get_traffic(username)
                 if total and total[0]["day"] >= user["traffic_limit"]:
                     edit_user(username, active=False)
-                    from .node_sync import sync_user_to_all_nodes
+                    from .node.sync import sync_user_to_all_nodes
 
                     await sync_user_to_all_nodes(user, active=False)
                     print(f"deactivated {username} on {address}: daily traffic limit exceeded")

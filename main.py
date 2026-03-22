@@ -2,7 +2,7 @@ import asyncio
 
 import uvicorn
 
-from app.database import init_db
+from app.db.database import init_db
 
 init_db()
 

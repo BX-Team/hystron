@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.database import (
+from app.db.database import (
     create_host,
     delete_host,
     edit_host,
@@ -92,7 +92,8 @@ def hosts_list():
 @router.post("/hosts", status_code=201)
 async def hosts_create(body: CreateBody):
     import asyncio
-    from app.node_sync import sync_new_host
+
+    from app.node.sync import sync_new_host
 
     address = body.address.strip()
     if not address:

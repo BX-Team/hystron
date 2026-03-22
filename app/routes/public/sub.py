@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
-from app.database import get_config, get_traffic, get_user_by_sid, list_hosts, register_device
+from app.db.database import get_config, get_traffic, get_user_by_sid, list_hosts, register_device
 from app.utils.sub import (
     build_browser_ctx,
     build_clash,
@@ -48,7 +48,7 @@ _BROWSER_KW = (
 @router.get("/hosts/status", include_in_schema=False)
 async def hosts_status():
     """Return online/offline status for each active host (checked via their internal API)."""
-    from app.node_client import get_node_status
+    from app.node.client import get_node_status
 
     hosts = list_hosts(active_only=True)
     result = {}

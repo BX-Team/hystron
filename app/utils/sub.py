@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 from fastapi.responses import PlainTextResponse
 
-from app.database import get_config, list_hosts_for_user
+from app.db.database import get_config, list_hosts_for_user
 
 _BUNDLED_TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates")
 

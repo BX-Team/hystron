@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.database import (
+from app.db.database import (
     create_user,
     delete_device,
     delete_user,
@@ -60,7 +60,8 @@ def users_list():
 @router.post("/users", status_code=201)
 async def users_create(body: CreateBody):
     import asyncio
-    from app.node_sync import sync_user_to_all_nodes
+
+    from app.node.sync import sync_user_to_all_nodes
 
     username = body.username.strip()
     if not username:
@@ -92,7 +93,8 @@ def users_get(username: str):
 @router.patch("/users/{username}")
 async def users_edit(username: str, body: EditBody):
     import asyncio
-    from app.node_sync import sync_user_to_all_nodes
+
+    from app.node.sync import sync_user_to_all_nodes
 
     if not user_exists(username):
         return JSONResponse({"error": "not found"}, status_code=404)
@@ -128,7 +130,8 @@ async def users_edit(username: str, body: EditBody):
 @router.delete("/users/{username}")
 async def users_delete(username: str):
     import asyncio
-    from app.node_sync import sync_user_to_all_nodes
+
+    from app.node.sync import sync_user_to_all_nodes
 
     user = get_user(username)
     if user is None:

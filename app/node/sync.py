@@ -17,7 +17,7 @@ async def _run(fn, *args):
 
 async def sync_user_to_host(host: dict, user: dict, action: str) -> None:
     """Push add/remove for a single user to one hystron_node host. Errors are logged."""
-    from app.node_client import add_user_to_node, remove_user_from_node
+    from app.node.client import add_user_to_node, remove_user_from_node
 
     if host.get("host_type") != "hystron_node":
         return
@@ -41,7 +41,7 @@ async def sync_user_to_host(host: dict, user: dict, action: str) -> None:
 
 async def sync_user_to_all_nodes(user: dict, *, active: bool) -> None:
     """Push user state to all active hystron_node hosts simultaneously."""
-    from app.database import list_hystron_nodes
+    from app.db.database import list_hystron_nodes
 
     hosts = list_hystron_nodes(active_only=True)
     action = "add" if active else "remove"
@@ -53,7 +53,7 @@ async def sync_user_to_all_nodes(user: dict, *, active: bool) -> None:
 
 async def sync_new_host(host: dict) -> None:
     """When a new hystron_node host is added, push all active users to it."""
-    from app.database import list_users
+    from app.db.database import list_users
 
     if host.get("host_type") != "hystron_node":
         return
@@ -73,7 +73,7 @@ async def full_resync() -> None:
     Push all users to all active hystron_node hosts.
     Called on panel startup.
     """
-    from app.database import list_hystron_nodes, list_users
+    from app.db.database import list_hystron_nodes, list_users
 
     hosts = list_hystron_nodes(active_only=True)
     users = list_users()

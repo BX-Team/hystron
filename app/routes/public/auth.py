@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from app.database import check_auth, get_config
+from app.db.database import check_auth, get_config
 
 router = APIRouter(tags=["Auth"])
 

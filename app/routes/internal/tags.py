@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.database import list_all_tags
+from app.db.database import list_all_tags
 
 router = APIRouter(prefix="/api", tags=["Tags"])
 

@@ -26,7 +26,7 @@ from textual.widgets import (
     TabPane,
 )
 
-from app.database import (
+from app.db.database import (
     create_host,
     create_user,
     delete_config,

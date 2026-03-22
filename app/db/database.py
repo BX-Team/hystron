@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.engine import CursorResult
 
-from .db import SessionLocal
+from . import SessionLocal
 from .models import Config, Device, Host, HostTag, Traffic, User, UserTag
 
 _CONFIG_DEFAULTS = {

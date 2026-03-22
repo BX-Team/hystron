@@ -6,7 +6,7 @@ from fastapi import FastAPI, Response, status
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .node_sync import full_resync
+from .node.sync import full_resync
 from .polling import poll_hysteria
 from .routes.internal import config, hosts, tags, traffic, users
 from .routes.public import auth, sub
