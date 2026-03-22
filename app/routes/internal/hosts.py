@@ -18,10 +18,20 @@ from app.db.database import (
 router = APIRouter(prefix="/api", tags=["Hosts"])
 
 _HOST_FIELDS = (
-    "address", "name", "port", "active", "host_type",
-    "api_address", "api_secret",
-    "inbound_tag", "inbound_port", "grpc_address", "api_key",
-    "sub_params", "protocol", "flow",
+    "address",
+    "name",
+    "port",
+    "active",
+    "host_type",
+    "api_address",
+    "api_secret",
+    "inbound_tag",
+    "inbound_port",
+    "grpc_address",
+    "api_key",
+    "sub_params",
+    "protocol",
+    "flow",
 )
 
 

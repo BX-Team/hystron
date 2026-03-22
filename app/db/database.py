@@ -380,9 +380,7 @@ def host_exists(host_id: int) -> bool:
 
 def _address_port_exists(address: str, port: int) -> bool:
     with SessionLocal() as session:
-        return session.scalars(
-            select(Host).where(Host.address == address, Host.port == port)
-        ).one_or_none() is not None
+        return session.scalars(select(Host).where(Host.address == address, Host.port == port)).one_or_none() is not None
 
 
 def create_host(

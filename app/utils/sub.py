@@ -107,11 +107,17 @@ def make_links(uname: str, pwd: str) -> list[dict]:
                     qs = f"{qs}&flow={flow}" if qs else f"flow={flow}"
                 uri = f"vless://{pwd}@{addr}:{port}?{qs}#{label}" if qs else f"vless://{pwd}@{addr}:{port}#{label}"
             else:
-                uri = f"trojan://{pwd}@{addr}:{port}?{sub_params}#{label}" if sub_params else f"trojan://{pwd}@{addr}:{port}#{label}"
+                uri = (
+                    f"trojan://{pwd}@{addr}:{port}?{sub_params}#{label}"
+                    if sub_params
+                    else f"trojan://{pwd}@{addr}:{port}#{label}"
+                )
         else:
             uri = f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}"
             proto = "hysteria2"
-        links.append({"uri": uri, "label": h["name"], "host": h["address"], "protocol": h.get("protocol") or "hysteria2"})
+        links.append(
+            {"uri": uri, "label": h["name"], "host": h["address"], "protocol": h.get("protocol") or "hysteria2"}
+        )
     return links
 
 
@@ -201,14 +207,16 @@ class SingBoxSubscription(BaseHystronSubscription):
         self.config = json.load(open(get_template_file("singbox.json")))
 
     def _add_hysteria2(self, h, uname, pwd):
-        self.config["outbounds"].append({
-            "type": "hysteria2",
-            "tag": h["name"],
-            "server": h["address"],
-            "server_port": h["port"],
-            "password": f"{uname}:{pwd}",
-            "tls": {"enabled": True, "server_name": h["address"]},
-        })
+        self.config["outbounds"].append(
+            {
+                "type": "hysteria2",
+                "tag": h["name"],
+                "server": h["address"],
+                "server_port": h["port"],
+                "password": f"{uname}:{pwd}",
+                "tls": {"enabled": True, "server_name": h["address"]},
+            }
+        )
 
     def _add_vless(self, h, uname, pwd):
         params = self._parse_sub_params(h)
@@ -244,14 +252,16 @@ class SingBoxSubscription(BaseHystronSubscription):
         port = h.get("inbound_port") or h["port"]
         sni = params.get("sni", h["address"])
 
-        self.config["outbounds"].append({
-            "type": "trojan",
-            "tag": h["name"],
-            "server": h["address"],
-            "server_port": port,
-            "password": pwd,
-            "tls": {"enabled": True, "server_name": sni},
-        })
+        self.config["outbounds"].append(
+            {
+                "type": "trojan",
+                "tag": h["name"],
+                "server": h["address"],
+                "server_port": port,
+                "password": pwd,
+                "tls": {"enabled": True, "server_name": sni},
+            }
+        )
 
     def render(self, base_headers: dict) -> PlainTextResponse:
         self.config["outbounds"][0]["outbounds"] = self.proxy_names
@@ -400,12 +410,15 @@ class XraySubscription(BaseHystronSubscription):
 
         config = json.load(open(get_template_file("xray.json")))
         config["remarks"] = h["name"]
-        config["outbounds"].insert(0, {
-            "tag": "proxy",
-            "protocol": "vless",
-            "settings": {"vnext": [{"address": h["address"], "port": port, "users": [user]}]},
-            "streamSettings": stream,
-        })
+        config["outbounds"].insert(
+            0,
+            {
+                "tag": "proxy",
+                "protocol": "vless",
+                "settings": {"vnext": [{"address": h["address"], "port": port, "users": [user]}]},
+                "streamSettings": stream,
+            },
+        )
         self.configs.append(config)
 
     def _add_trojan(self, h, uname, pwd):
@@ -420,12 +433,15 @@ class XraySubscription(BaseHystronSubscription):
 
         config = json.load(open(get_template_file("xray.json")))
         config["remarks"] = h["name"]
-        config["outbounds"].insert(0, {
-            "tag": "proxy",
-            "protocol": "trojan",
-            "settings": {"servers": [{"address": h["address"], "port": port, "password": pwd}]},
-            "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": tls_settings},
-        })
+        config["outbounds"].insert(
+            0,
+            {
+                "tag": "proxy",
+                "protocol": "trojan",
+                "settings": {"servers": [{"address": h["address"], "port": port, "password": pwd}]},
+                "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": tls_settings},
+            },
+        )
         self.configs.append(config)
 
     def render(self, base_headers: dict) -> PlainTextResponse:
@@ -442,9 +458,7 @@ class PlainSubscription(BaseHystronSubscription):
         self.uris: list[str] = []
 
     def _add_hysteria2(self, h, uname, pwd):
-        self.uris.append(
-            f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}"
-        )
+        self.uris.append(f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}")
 
     def _add_vless(self, h, uname, pwd):
         addr = h["address"]
@@ -454,9 +468,7 @@ class PlainSubscription(BaseHystronSubscription):
         qs = h.get("sub_params") or ""
         if flow:
             qs = f"{qs}&flow={flow}" if qs else f"flow={flow}"
-        self.uris.append(
-            f"vless://{pwd}@{addr}:{port}?{qs}#{label}" if qs else f"vless://{pwd}@{addr}:{port}#{label}"
-        )
+        self.uris.append(f"vless://{pwd}@{addr}:{port}?{qs}#{label}" if qs else f"vless://{pwd}@{addr}:{port}#{label}")
 
     def _add_trojan(self, h, uname, pwd):
         addr = h["address"]

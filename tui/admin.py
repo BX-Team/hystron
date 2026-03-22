@@ -449,8 +449,14 @@ class HostCreateModal(BaseModal):
                     id="protocol",
                     classes="node-field",
                 )
-                yield Input(placeholder="Flow  (e.g. xtls-rprx-vision, empty for none)", id="flow", classes="node-field")
-                yield Input(placeholder="Sub params (e.g. security=reality&sni=example.com)", id="sub_params", classes="node-field")
+                yield Input(
+                    placeholder="Flow  (e.g. xtls-rprx-vision, empty for none)", id="flow", classes="node-field"
+                )
+                yield Input(
+                    placeholder="Sub params (e.g. security=reality&sni=example.com)",
+                    id="sub_params",
+                    classes="node-field",
+                )
                 yield Input(placeholder="Tags (comma-separated, e.g. TEST,VIP)", id="tags")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
@@ -544,7 +550,9 @@ class HostEditModal(BaseModal):
                 yield Input(placeholder="API key      (empty = keep)", id="api_key", classes="node-field")
                 yield Input(placeholder="Inbound tag  (empty = keep)", id="inbound_tag", classes="node-field")
                 yield Input(placeholder="Inbound port (empty = keep)", id="inbound_port", classes="node-field")
-                yield Input(placeholder="Protocol     (vless/trojan, empty = keep)", id="protocol", classes="node-field")
+                yield Input(
+                    placeholder="Protocol     (vless/trojan, empty = keep)", id="protocol", classes="node-field"
+                )
                 yield Input(placeholder="Flow         (empty = keep)", id="flow", classes="node-field")
                 yield Input(placeholder="Sub params   (empty = keep)", id="sub_params", classes="node-field")
                 yield Input(placeholder="Tags (comma-separated, empty = keep)", id="tags")

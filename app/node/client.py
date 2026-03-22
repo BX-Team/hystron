@@ -6,6 +6,7 @@ Usage:
     add_user_to_node(host, username, uuid, password)
     remove_user_from_node(host, username)
 """
+
 import grpc
 
 from app.gen import hystron_node_pb2 as pb2

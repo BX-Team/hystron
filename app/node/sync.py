@@ -4,6 +4,7 @@ Async synchronization of users with hystron-node hosts.
 Fire-and-forget friendly — errors are logged but never re-raised so that
 a single offline node cannot block user management.
 """
+
 from __future__ import annotations
 
 import asyncio
