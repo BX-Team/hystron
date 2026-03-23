@@ -521,7 +521,7 @@ class HostCreateModal(BaseModal):
                 return
             if tags_raw:
                 tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
-                set_host_tags(address, tags)
+                set_host_tags(result["id"], tags)
             self.notify(f"Host '{address}' created", severity="success", title="Success")
             self.on_close()
         await self.key_escape()
@@ -530,8 +530,9 @@ class HostCreateModal(BaseModal):
 class HostEditModal(BaseModal):
     """Edit an existing host."""
 
-    def __init__(self, address: str, on_close: Callable, *args, **kwargs) -> None:
+    def __init__(self, host_id: int, address: str, on_close: Callable, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.host_id = host_id
         self.address = address
         self.on_close = on_close
         self._host_type = "hysteria2"
@@ -564,7 +565,7 @@ class HostEditModal(BaseModal):
                 yield Button("Cancel", id="cancel", variant="error")
 
     async def on_mount(self) -> None:
-        row = get_host(self.address)
+        row = get_host(self.host_id)
         if row:
             self._host_type = row.get("host_type") or "hysteria2"
             self.query_one("#active").value = bool(row["active"])
@@ -578,7 +579,7 @@ class HostEditModal(BaseModal):
             if row.get("inbound_port"):
                 self.query_one("#inbound_port").value = str(row["inbound_port"])
         self._update_visibility()
-        existing_tags = get_host_tags(self.address)
+        existing_tags = get_host_tags(self.host_id)
         if existing_tags:
             self.query_one("#tags").value = ", ".join(existing_tags)
         self.set_focus(self.query_one("#name"))
@@ -620,10 +621,10 @@ class HostEditModal(BaseModal):
                 kwargs["flow"] = self.query_one("#flow").value.strip() or None
                 kwargs["sub_params"] = self.query_one("#sub_params").value.strip() or None
 
-            edit_host(self.address, **kwargs)
+            edit_host(self.host_id, **kwargs)
             if tags_raw is not None:
                 tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
-                set_host_tags(self.address, tags)
+                set_host_tags(self.host_id, tags)
             self.notify(f"Host '{self.address}' updated", severity="success", title="Success")
             self.on_close()
         await self.key_escape()
@@ -632,8 +633,9 @@ class HostEditModal(BaseModal):
 class HostDeleteModal(BaseModal):
     """Confirm host deletion."""
 
-    def __init__(self, address: str, on_close: Callable, *args, **kwargs) -> None:
+    def __init__(self, host_id: int, address: str, on_close: Callable, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.host_id = host_id
         self.address = address
         self.on_close = on_close
 
@@ -652,7 +654,7 @@ class HostDeleteModal(BaseModal):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "delete":
-            delete_host(self.address)
+            delete_host(self.host_id)
             self.notify(f"Host '{self.address}' deleted", severity="success", title="Deleted")
             self.on_close()
         await self.key_escape()
@@ -956,7 +958,7 @@ class HostsContent(Static):
                 "\u2714" if r["active"] else "\u2716",
                 r.get("host_type") or "hysteria2",
                 r.get("protocol") or "—",
-                ", ".join(get_host_tags(r["address"])) or "—",
+                ", ".join(get_host_tags(r["id"])) or "—",
             ]
             for idx, r in enumerate(rows, 1)
         ]
@@ -965,15 +967,16 @@ class HostsContent(Static):
         for row, orig in zip(data, rows):
             self.table.add_row(
                 *[_center(cell, col_widths[i]) for i, cell in enumerate(row)],
-                key=orig["address"],
+                key=str(orig["id"]),
             )
 
     @property
-    def _selected_address(self) -> str | None:
+    def _selected_id(self) -> int | None:
         if not self.table.columns:
             return None
         try:
-            return self.table.coordinate_to_cell_key(Coordinate(self.table.cursor_row, 1)).row_key.value
+            key = self.table.coordinate_to_cell_key(Coordinate(self.table.cursor_row, 0)).row_key.value
+            return int(key) if key is not None else None
         except Exception:
             return None
 
@@ -984,19 +987,25 @@ class HostsContent(Static):
         self.app.push_screen(HostCreateModal(self._refresh_table))
 
     async def action_edit_host(self) -> None:
-        address = self._selected_address
-        if not address:
+        host_id = self._selected_id
+        if host_id is None:
             return
-        self.app.push_screen(HostEditModal(address, self._refresh_table))
+        host = get_host(host_id)
+        if not host:
+            return
+        self.app.push_screen(HostEditModal(host_id, host["address"], self._refresh_table))
 
     async def key_enter(self) -> None:
         await self.action_edit_host()
 
     async def action_delete_host(self) -> None:
-        address = self._selected_address
-        if not address:
+        host_id = self._selected_id
+        if host_id is None:
             return
-        self.app.push_screen(HostDeleteModal(address, self._refresh_table))
+        host = get_host(host_id)
+        if not host:
+            return
+        self.app.push_screen(HostDeleteModal(host_id, host["address"], self._refresh_table))
 
 
 class ConfigContent(Static):
