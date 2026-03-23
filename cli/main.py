@@ -18,7 +18,7 @@ INSTALL_DIR = os.environ.get("HYSTRON_INSTALL_DIR", "/opt/hystron")
 API_URL = os.environ.get("HYSTRON_API", "http://127.0.0.1:9001").rstrip("/")
 
 # Automatically updated during release process
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 console = Console()
 
