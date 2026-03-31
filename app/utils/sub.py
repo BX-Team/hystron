@@ -348,110 +348,6 @@ class ClashSubscription(BaseHystronSubscription):
         )
 
 
-class XraySubscription(BaseHystronSubscription):
-    def __init__(self):
-        super().__init__()
-        self.configs: list[dict] = []
-
-    def _add_hysteria2(self, h, uname, pwd):
-        config = json.load(open(get_template_file("xray.json")))
-        config["remarks"] = h["name"]
-        config["outbounds"].insert(
-            0,
-            {
-                "tag": "proxy",
-                "protocol": "hysteria",
-                "settings": {
-                    "version": 2,
-                    "address": h["address"],
-                    "port": h["port"],
-                },
-                "streamSettings": {
-                    "network": "hysteria",
-                    "hysteriaSettings": {
-                        "version": 2,
-                        "auth": f"{uname}:{pwd}",
-                    },
-                    "security": "tls",
-                    "tlsSettings": {
-                        "serverName": h["address"],
-                        "allowInsecure": True,
-                        "alpn": ["h3"],
-                    },
-                },
-            },
-        )
-        self.configs.append(config)
-
-    def _add_vless(self, h, uname, pwd):
-        params = self._parse_sub_params(h)
-        port = h.get("inbound_port") or h["port"]
-        flow = h.get("flow") or ""
-        sni = params.get("sni", "")
-        pbk = params.get("pbk", "")
-        sid = params.get("sid", "")
-        fp = params.get("fp", "chrome")
-        security = params.get("security", "tls")
-
-        user: dict = {"id": pwd, "encryption": "none"}
-        if flow:
-            user["flow"] = flow
-
-        stream: dict = {"network": "tcp", "security": security}
-        if security == "reality":
-            stream["realitySettings"] = {
-                "fingerprint": fp,
-                "serverName": sni,
-                "publicKey": pbk,
-                "shortId": sid,
-            }
-        else:
-            stream["tlsSettings"] = {"serverName": sni, "fingerprint": fp}
-
-        config = json.load(open(get_template_file("xray.json")))
-        config["remarks"] = h["name"]
-        config["outbounds"].insert(
-            0,
-            {
-                "tag": "proxy",
-                "protocol": "vless",
-                "settings": {"vnext": [{"address": h["address"], "port": port, "users": [user]}]},
-                "streamSettings": stream,
-            },
-        )
-        self.configs.append(config)
-
-    def _add_trojan(self, h, uname, pwd):
-        params = self._parse_sub_params(h)
-        port = h.get("inbound_port") or h["port"]
-        sni = params.get("sni", h["address"])
-        fp = params.get("fp", "")
-
-        tls_settings: dict = {"serverName": sni, "allowInsecure": False}
-        if fp:
-            tls_settings["fingerprint"] = fp
-
-        config = json.load(open(get_template_file("xray.json")))
-        config["remarks"] = h["name"]
-        config["outbounds"].insert(
-            0,
-            {
-                "tag": "proxy",
-                "protocol": "trojan",
-                "settings": {"servers": [{"address": h["address"], "port": port, "password": pwd}]},
-                "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": tls_settings},
-            },
-        )
-        self.configs.append(config)
-
-    def render(self, base_headers: dict) -> PlainTextResponse:
-        return PlainTextResponse(
-            json.dumps(self.configs, indent=2, ensure_ascii=False),
-            media_type="application/json",
-            headers=base_headers,
-        )
-
-
 class PlainSubscription(BaseHystronSubscription):
     def __init__(self):
         super().__init__()
@@ -505,10 +401,6 @@ def build_singbox(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse
 
 def build_clash(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
     return _build_subscription(ClashSubscription, uname, pwd, base_headers)
-
-
-def build_xray(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
-    return _build_subscription(XraySubscription, uname, pwd, base_headers)
 
 
 def build_plain(uname: str, pwd: str, base_headers: dict) -> PlainTextResponse:
