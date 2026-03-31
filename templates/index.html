@@ -162,6 +162,11 @@
     .stat-lbl { font-size: 11px; color: #383838; text-transform: uppercase; letter-spacing: .8px; }
     .stat-val { font-size: 17px; color: #737373; font-weight: 500; }
 
+    /* ── expires ── */
+    .expires-hint { font-size: 11px; color: #383838; margin-top: 6px; text-align: center; letter-spacing: .3px; }
+    .expires-hint.soon { color: #fb923c; }
+    .expires-hint.expired { color: #f87171; }
+
     /* ── footer ── */
     .footer { margin-top: 4px; font-size: 12px; color: #363636; text-align: center; line-height: 2; }
     .footer a { color: #363636; text-decoration: none; }
@@ -193,9 +198,12 @@
         <div class="profile-name">{{ username }}</div>
         <div class="profile-hint">hystron</div>
       </div>
-      <div class="status-pill {{ '' if active else 'inactive' }}" id="statusPill">
-        <span class="pill-dot"></span>
-        <span id="statusText">{{ 'active' if active else 'inactive' }}</span>
+      <div style="display:flex; flex-direction:column; align-items:center;">
+        <div class="status-pill {{ '' if active else 'inactive' }}" id="statusPill">
+          <span class="pill-dot"></span>
+          <span id="statusText">{{ 'active' if active else 'inactive' }}</span>
+        </div>
+        {% if expires_at %}<div class="expires-hint" id="expiresHint" data-ts="{{ expires_at }}"></div>{% endif %}
       </div>
     </div>
 
@@ -335,6 +343,8 @@
         reset: 'traffic resets at 00:00 UTC',
         support: 'support',
         copied: 'copied',
+        expires: 'expires',
+        expired: 'expired',
       },
       ru: {
         subscription: 'подписка',
@@ -349,6 +359,8 @@
         reset: 'трафик сбрасывается в 00:00 UTC',
         support: 'поддержка',
         copied: 'скопировано',
+        expires: 'истекает',
+        expired: 'истекла',
       },
     };
 
@@ -368,6 +380,20 @@
       if (resetEl) resetEl.textContent = t.reset;
       var supportEl = document.getElementById('supportLink');
       if (supportEl) supportEl.textContent = t.support;
+      var expiresEl = document.getElementById('expiresHint');
+      if (expiresEl) {
+        var ts = parseInt(expiresEl.getAttribute('data-ts'), 10);
+        var now = Math.floor(Date.now() / 1000);
+        var date = new Date(ts * 1000).toISOString().slice(0, 10);
+        if (ts < now) {
+          expiresEl.textContent = t.expired + ': ' + date;
+          expiresEl.className = 'expires-hint expired';
+        } else {
+          var sevenDays = 7 * 86400;
+          expiresEl.textContent = t.expires + ': ' + date;
+          expiresEl.className = 'expires-hint' + (ts - now < sevenDays ? ' soon' : '');
+        }
+      }
     }
 
     function toggleLang() {

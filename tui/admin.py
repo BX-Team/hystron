@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 # Allow running as a plain script: python tui/admin.py
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -413,6 +414,73 @@ class UserDeleteModal(BaseModal):
         await self.key_escape()
 
 
+_DURATIONS: list[tuple[str, str]] = [
+    ("1 day", "1d"),
+    ("7 days", "7d"),
+    ("1 month", "1mo"),
+    ("3 months", "3mo"),
+    ("6 months", "6mo"),
+    ("1 year", "1y"),
+]
+
+_DURATION_SECONDS: dict[str, int] = {
+    "1d": 86400,
+    "7d": 7 * 86400,
+    "1mo": 30 * 86400,
+    "3mo": 90 * 86400,
+    "6mo": 180 * 86400,
+    "1y": 365 * 86400,
+}
+
+
+class UserRenewModal(BaseModal):
+    """Extend (or set) a user's subscription expiry."""
+
+    def __init__(self, username: str, on_close: Callable, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.username = username
+        self.on_close = on_close
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="modal-box"):
+            yield Static(f"Renew subscription — {self.username}", classes="modal-title")
+            yield Static("", id="current-expiry", classes="modal-subtitle")
+            with Vertical(classes="input-container"):
+                yield Select(_DURATIONS, value="1mo", id="duration")
+            with Horizontal(classes="button-row"):
+                yield Button("Renew", id="renew", variant="success")
+                yield Button("Cancel", id="cancel", variant="error")
+
+    async def on_mount(self) -> None:
+        row = get_user(self.username)
+        if row and row["expires_at"]:
+            self.query_one("#current-expiry").update(f"Current expiry: {_fmt_ts(row['expires_at'])}")
+        else:
+            self.query_one("#current-expiry").update("Current expiry: never (will be set from now)")
+        self.set_focus(self.query_one("#duration"))
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "renew":
+            duration_key = str(self.query_one("#duration").value)
+            delta = _DURATION_SECONDS.get(duration_key, 0)
+            if not delta:
+                await self.key_escape()
+                return
+            row = get_user(self.username)
+            now = int(time.time())
+            current = row["expires_at"] if row else 0
+            base = current if current and current > now else now
+            new_expires = base + delta
+            edit_user(self.username, expires_at=new_expires)
+            self.notify(
+                f"Expires at: {_fmt_ts(new_expires)}",
+                severity="success",
+                title=f"Renewed +{duration_key}",
+            )
+            self.on_close()
+        await self.key_escape()
+
+
 # ── modals: hosts ─────────────────────────────────────────────────────────────
 
 
@@ -775,6 +843,7 @@ class UsersContent(Static):
         Binding("c", "create_user", "Create"),
         Binding("e", "edit_user", "Edit"),
         Binding("d", "delete_user", "Delete"),
+        Binding("x", "renew_user", "Renew"),
         Binding("q", "show_qr", "QR code"),
         Binding("v", "show_devices", "Devices"),
         Binding("r", "refresh", "Refresh"),
@@ -871,6 +940,12 @@ class UsersContent(Static):
         if not username:
             return
         self.app.push_screen(UserQRModal(username))
+
+    async def action_renew_user(self) -> None:
+        username = self._selected_username
+        if not username:
+            return
+        self.app.push_screen(UserRenewModal(username, self._refresh_table))
 
     async def action_show_devices(self) -> None:
         username = self._selected_username

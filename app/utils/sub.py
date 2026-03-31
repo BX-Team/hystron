@@ -130,6 +130,7 @@ def build_browser_ctx(
     day: int,
     week: int,
     alltime: int,
+    expires_at: int = 0,
 ) -> dict:
     traffic_tiles = (
         [
@@ -148,6 +149,7 @@ def build_browser_ctx(
         "links": link_list,
         "traffic_tiles": traffic_tiles,
         "active": active,
+        "expires_at": expires_at,
         "support_url": get_config("support_url", ""),
     }
 

@@ -147,5 +147,5 @@ async def subscription(sid: str, request: Request):
 
     print(f"\nbrowser: {uname} | {request.client.host}\n")
 
-    ctx = build_browser_ctx(uname, user["active"], sub_url, link_list, hour, day, week, alltime)
+    ctx = build_browser_ctx(uname, user["active"], sub_url, link_list, hour, day, week, alltime, user["expires_at"])
     return _make_templates().TemplateResponse("index.html", {"request": request, **ctx})
