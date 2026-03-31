@@ -25,7 +25,6 @@ _CONFIG_DEFAULTS = {
     "templates_dir": "/var/lib/hystron/templates",
     "template_singbox": "",
     "template_clash": "",
-    "template_xray": "",
     "template_index": "",
 }
 

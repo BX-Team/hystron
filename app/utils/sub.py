@@ -13,7 +13,6 @@ _BUNDLED_TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.di
 _TEMPLATE_CONFIG_KEY: dict[str, str] = {
     "singbox.json": "template_singbox",
     "clash.yaml": "template_clash",
-    "xray.json": "template_xray",
     "index.html": "template_index",
 }
 
