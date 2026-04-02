@@ -506,6 +506,8 @@ class HostCreateModal(BaseModal):
                 # hysteria2 fields
                 yield Input(placeholder="API address  (e.g. http://127.0.0.1:25413)", id="api_address")
                 yield Input(placeholder="API secret", id="api_secret")
+                yield Input(placeholder="Up Mbps      (e.g. 100)", id="up_mbps")
+                yield Input(placeholder="Down Mbps    (e.g. 200)", id="down_mbps")
                 # hystron_node fields (hidden initially)
                 yield Input(placeholder="gRPC address (e.g. 127.0.0.1:50051)", id="grpc_address", classes="node-field")
                 yield Input(placeholder="API key", id="api_key", classes="node-field")
@@ -543,6 +545,8 @@ class HostCreateModal(BaseModal):
             w.display = is_node
         self.query_one("#api_address").display = not is_node
         self.query_one("#api_secret").display = not is_node
+        self.query_one("#up_mbps").display = not is_node
+        self.query_one("#down_mbps").display = not is_node
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "host_type":
@@ -573,6 +577,10 @@ class HostCreateModal(BaseModal):
             if host_type == "hysteria2":
                 kwargs["api_address"] = self.query_one("#api_address").value.strip()
                 kwargs["api_secret"] = self.query_one("#api_secret").value.strip()
+                up_raw = self.query_one("#up_mbps", Input).value.strip()
+                down_raw = self.query_one("#down_mbps", Input).value.strip()
+                kwargs["up_mbps"] = int(up_raw) if up_raw else None
+                kwargs["down_mbps"] = int(down_raw) if down_raw else None
             else:
                 kwargs["grpc_address"] = self.query_one("#grpc_address").value.strip() or None
                 kwargs["api_key"] = self.query_one("#api_key").value.strip() or None
@@ -614,6 +622,8 @@ class HostEditModal(BaseModal):
                 # hysteria2 fields
                 yield Input(placeholder="API address (empty = keep)", id="api_address")
                 yield Input(placeholder="API secret  (empty = keep)", id="api_secret")
+                yield Input(placeholder="Up Mbps     (empty = keep)", id="up_mbps")
+                yield Input(placeholder="Down Mbps   (empty = keep)", id="down_mbps")
                 # hystron_node fields
                 yield Input(placeholder="gRPC address (empty = keep)", id="grpc_address", classes="node-field")
                 yield Input(placeholder="API key      (empty = keep)", id="api_key", classes="node-field")
@@ -646,6 +656,10 @@ class HostEditModal(BaseModal):
                     self.query_one(f"#{field}").value = str(row[field])
             if row.get("inbound_port"):
                 self.query_one("#inbound_port").value = str(row["inbound_port"])
+            if row.get("up_mbps"):
+                self.query_one("#up_mbps", Input).value = str(row["up_mbps"])
+            if row.get("down_mbps"):
+                self.query_one("#down_mbps", Input).value = str(row["down_mbps"])
         self._update_visibility()
         existing_tags = get_host_tags(self.host_id)
         if existing_tags:
@@ -658,6 +672,8 @@ class HostEditModal(BaseModal):
             w.display = is_node
         self.query_one("#api_address").display = not is_node
         self.query_one("#api_secret").display = not is_node
+        self.query_one("#up_mbps").display = not is_node
+        self.query_one("#down_mbps").display = not is_node
 
     async def key_enter(self) -> None:
         if not self.query_one("#active").has_focus and not self.query_one("#cancel").has_focus:
@@ -679,6 +695,10 @@ class HostEditModal(BaseModal):
             if self._host_type == "hysteria2":
                 kwargs["api_address"] = self.query_one("#api_address").value.strip() or None
                 kwargs["api_secret"] = self.query_one("#api_secret").value.strip() or None
+                up_raw = self.query_one("#up_mbps", Input).value.strip()
+                down_raw = self.query_one("#down_mbps", Input).value.strip()
+                kwargs["up_mbps"] = int(up_raw) if up_raw else None
+                kwargs["down_mbps"] = int(down_raw) if down_raw else None
             else:
                 kwargs["grpc_address"] = self.query_one("#grpc_address").value.strip() or None
                 kwargs["api_key"] = self.query_one("#api_key").value.strip() or None

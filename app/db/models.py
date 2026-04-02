@@ -63,6 +63,8 @@ class Host(Base):
     sub_params: Mapped[str | None] = mapped_column(Text, nullable=True)
     protocol: Mapped[str | None] = mapped_column(Text, nullable=True)
     flow: Mapped[str | None] = mapped_column(Text, nullable=True)
+    up_mbps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    down_mbps: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class HostTag(Base):

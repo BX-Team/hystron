@@ -112,7 +112,12 @@ def make_links(uname: str, pwd: str) -> list[dict]:
                     else f"trojan://{pwd}@{addr}:{port}#{label}"
                 )
         else:
-            uri = f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}"
+            qs = f"sni={h['address']}"
+            if h.get("up_mbps"):
+                qs += f"&up={h['up_mbps']}"
+            if h.get("down_mbps"):
+                qs += f"&down={h['down_mbps']}"
+            uri = f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?{qs}#{h['name']}"
             proto = "hysteria2"
         links.append(
             {"uri": uri, "label": h["name"], "host": h["address"], "protocol": h.get("protocol") or "hysteria2"}
@@ -208,16 +213,19 @@ class SingBoxSubscription(BaseHystronSubscription):
         self.config = json.load(open(get_template_file("singbox.json")))
 
     def _add_hysteria2(self, h, uname, pwd):
-        self.config["outbounds"].append(
-            {
-                "type": "hysteria2",
-                "tag": h["name"],
-                "server": h["address"],
-                "server_port": h["port"],
-                "password": f"{uname}:{pwd}",
-                "tls": {"enabled": True, "server_name": h["address"]},
-            }
-        )
+        outbound: dict = {
+            "type": "hysteria2",
+            "tag": h["name"],
+            "server": h["address"],
+            "server_port": h["port"],
+            "password": f"{uname}:{pwd}",
+            "tls": {"enabled": True, "server_name": h["address"]},
+        }
+        if h.get("up_mbps"):
+            outbound["up_mbps"] = h["up_mbps"]
+        if h.get("down_mbps"):
+            outbound["down_mbps"] = h["down_mbps"]
+        self.config["outbounds"].append(outbound)
 
     def _add_vless(self, h, uname, pwd):
         params = self._parse_sub_params(h)
@@ -279,14 +287,19 @@ class ClashSubscription(BaseHystronSubscription):
         self.proxy_lines: list[str] = []
 
     def _add_hysteria2(self, h, uname, pwd):
-        self.proxy_lines.append(
+        lines = (
             f"  - name: {h['name']}\n"
             f"    type: hysteria2\n"
             f"    server: {h['address']}\n"
             f"    port: {h['port']}\n"
             f"    password: {uname}:{pwd}\n"
-            f"    skip-cert-verify: true\n"
         )
+        if h.get("up_mbps"):
+            lines += f"    up: {h['up_mbps']}\n"
+        if h.get("down_mbps"):
+            lines += f"    down: {h['down_mbps']}\n"
+        lines += "    skip-cert-verify: true\n"
+        self.proxy_lines.append(lines)
 
     def _add_vless(self, h, uname, pwd):
         params = self._parse_sub_params(h)
@@ -355,7 +368,12 @@ class PlainSubscription(BaseHystronSubscription):
         self.uris: list[str] = []
 
     def _add_hysteria2(self, h, uname, pwd):
-        self.uris.append(f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?sni={h['address']}#{h['name']}")
+        qs = f"sni={h['address']}"
+        if h.get("up_mbps"):
+            qs += f"&up={h['up_mbps']}"
+        if h.get("down_mbps"):
+            qs += f"&down={h['down_mbps']}"
+        self.uris.append(f"hysteria2://{uname}:{pwd}@{h['address']}:{h['port']}/?{qs}#{h['name']}")
 
     def _add_vless(self, h, uname, pwd):
         addr = h["address"]
