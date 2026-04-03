@@ -50,7 +50,7 @@ from app.db.database import (
     set_host_tags,
     set_user_tags,
 )
-from app.utils.sub import fmt_bytes
+from app.subscription import fmt_bytes
 from tui import BaseModal
 
 # ── helpers ──────────────────────────────────────────────────────────────────

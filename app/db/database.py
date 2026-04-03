@@ -26,6 +26,7 @@ _CONFIG_DEFAULTS = {
     "template_singbox": "",
     "template_clash": "",
     "template_index": "",
+    "template_xray": "",
 }
 
 
