@@ -8,11 +8,12 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from app.db.database import get_config, get_traffic, get_user_by_sid, list_hosts, register_device
-from app.utils.sub import (
+from app.subscription import (
     build_browser_ctx,
     build_clash,
     build_plain,
     build_singbox,
+    build_xray,
     get_templates_search_dirs,
     make_base_headers,
     make_links,
@@ -79,6 +80,7 @@ async def hosts_status():
 
 _RE_SINGBOX = re.compile(r"^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*[Ss]ing[\-b]?ox.*")
 _RE_CLASH = re.compile(r"^([Cc]lash[\-\.]?[Vv]erge|[Cc]lash[\-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)")
+_RE_XRAY = re.compile(r"^([Vv]2rayNG|[Vv]2rayN|[Ss]treisand|[Hh]app|[Kk]tor\-client)|INCY/[\d.]+")
 
 
 def _get_base_url(request: Request) -> str:
@@ -143,6 +145,8 @@ async def subscription(sid: str, request: Request):
             return build_singbox(uname, pwd, base_headers)
         if _RE_CLASH.search(ua):
             return build_clash(uname, pwd, base_headers)
+        if _RE_XRAY.search(ua):
+            return build_xray(uname, pwd, base_headers)
         return build_plain(uname, pwd, base_headers)
 
     print(f"\nbrowser: {uname} | {request.client.host}\n")

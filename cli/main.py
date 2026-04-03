@@ -447,6 +447,8 @@ def hosts_create(
     # hysteria2 options
     api_address: Optional[str] = typer.Option(None, "--api-address", "-a", help="Hysteria2 API address"),
     api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s", help="Hysteria2 API secret"),
+    up_mbps: Optional[int] = typer.Option(None, "--up-mbps", help="Upstream bandwidth limit (Mbps)"),
+    down_mbps: Optional[int] = typer.Option(None, "--down-mbps", help="Downstream bandwidth limit (Mbps)"),
     # hystron_node options
     inbound_tag: Optional[str] = typer.Option(None, "--inbound-tag", help="Xray inbound tag"),
     inbound_port: Optional[int] = typer.Option(None, "--inbound-port", help="Inbound port for subscriptions"),
@@ -468,6 +470,10 @@ def hosts_create(
         body["api_address"] = api_address
     if api_secret is not None:
         body["api_secret"] = api_secret
+    if up_mbps is not None:
+        body["up_mbps"] = up_mbps
+    if down_mbps is not None:
+        body["down_mbps"] = down_mbps
     if inbound_tag is not None:
         body["inbound_tag"] = inbound_tag
     if inbound_port is not None:
@@ -500,6 +506,10 @@ def hosts_info(address: str = typer.Argument(..., help="Host address")):
     if host_type == "hysteria2":
         table.add_row("api_address", str(row.get("api_address", "")))
         table.add_row("api_secret", str(row.get("api_secret", "")))
+        if row.get("up_mbps") is not None:
+            table.add_row("up_mbps", str(row["up_mbps"]))
+        if row.get("down_mbps") is not None:
+            table.add_row("down_mbps", str(row["down_mbps"]))
     else:
         for key in ("grpc_address", "api_key", "inbound_tag", "inbound_port", "protocol", "flow", "sub_params"):
             val = row.get(key)
@@ -519,6 +529,8 @@ def hosts_edit(
     # hysteria2
     api_address: Optional[str] = typer.Option(None, "--api-address", "-a"),
     api_secret: Optional[str] = typer.Option(None, "--api-secret", "-s"),
+    up_mbps: Optional[int] = typer.Option(None, "--up-mbps", help="Upstream bandwidth limit (Mbps)"),
+    down_mbps: Optional[int] = typer.Option(None, "--down-mbps", help="Downstream bandwidth limit (Mbps)"),
     # hystron_node
     inbound_tag: Optional[str] = typer.Option(None, "--inbound-tag"),
     inbound_port: Optional[int] = typer.Option(None, "--inbound-port"),
@@ -540,6 +552,10 @@ def hosts_edit(
         body["api_address"] = api_address
     if api_secret is not None:
         body["api_secret"] = api_secret
+    if up_mbps is not None:
+        body["up_mbps"] = up_mbps
+    if down_mbps is not None:
+        body["down_mbps"] = down_mbps
     if inbound_tag is not None:
         body["inbound_tag"] = inbound_tag
     if inbound_port is not None:

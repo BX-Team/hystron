@@ -128,6 +128,13 @@
     .btn-green:hover { background: rgba(52,211,153,.14); border-color: rgba(52,211,153,.35); }
     .btn-dim { background: transparent; border: 1px solid #262626; color: #525252; }
     .btn-dim:hover { border-color: #404040; color: #737373; }
+    .btn-disabled {
+      background: transparent; border: 1px solid #1e1e1e; color: #2e2e2e;
+      cursor: default; pointer-events: none;
+    }
+    .app-card.wip { opacity: .5; }
+    .app-card.wip:hover { border-color: #262626; }
+    .badge.wip { color: #fb923c; border-color: rgba(251,146,60,.25); }
 
     /* ── proxy link rows ── */
     .links-list { display: flex; flex-direction: column; gap: 8px; }
@@ -244,6 +251,25 @@
           </div>
         </div>
 
+        <div class="app-card" id="app-incy">
+          <div class="app-icon">🔒</div>
+          <div class="app-info">
+            <span class="app-name">INCY</span>
+            <div class="app-platforms">
+              <span class="badge" data-platform="ios">iOS</span>
+              <span class="badge" data-platform="android">Android</span>
+            </div>
+          </div>
+          <div class="app-actions">
+            <a class="btn btn-green" href="incy://add/{{ sub_url | urlencode }}" data-i18n="configure">configure</a>
+            <a class="btn btn-dim"
+               data-dl-ios="https://apps.apple.com/ru/app/incy/id6756943388"
+               data-dl-android="https://play.google.com/store/apps/details?id=llc.itdev.incy&amp;pcampaignid=web_share"
+               href="https://apps.apple.com/ru/app/incy/id6756943388"
+               target="_blank" rel="noreferrer" data-i18n="download">download</a>
+          </div>
+        </div>
+
         <div class="app-card" id="app-hiddify">
           <div class="app-icon">🛡️</div>
           <div class="app-info">
@@ -263,19 +289,17 @@
           </div>
         </div>
 
-        <div class="app-card" id="app-clash-verge">
-          <div class="app-icon">⚡</div>
+        <div class="app-card wip" id="app-nyx">
+          <div class="app-icon">🖥️</div>
           <div class="app-info">
-            <span class="app-name">Clash Verge Rev</span>
+            <span class="app-name">Nyx</span>
             <div class="app-platforms">
               <span class="badge" data-platform="windows">Windows</span>
+              <span class="badge wip" data-i18n="wip">in development</span>
             </div>
           </div>
           <div class="app-actions">
-            <a class="btn btn-green" href="clash://install-config?url={{ (sub_url ~ '?fmt=clash') | urlencode }}" data-i18n="configure">configure</a>
-            <a class="btn btn-dim"
-               href="https://github.com/clash-verge-rev/clash-verge-rev/releases/download/v2.4.6/Clash.Verge_2.4.6_x64-setup.exe"
-               target="_blank" rel="noreferrer" data-i18n="download">download</a>
+            <span class="btn btn-disabled" data-i18n="soon">coming soon</span>
           </div>
         </div>
 
@@ -345,6 +369,8 @@
         copied: 'copied',
         expires: 'expires',
         expired: 'expired',
+        wip: 'in development',
+        soon: 'coming soon',
       },
       ru: {
         subscription: 'подписка',
@@ -361,6 +387,8 @@
         copied: 'скопировано',
         expires: 'истекает',
         expired: 'истекла',
+        wip: 'в разработке',
+        soon: 'скоро',
       },
     };
 

@@ -26,6 +26,7 @@ _CONFIG_DEFAULTS = {
     "template_singbox": "",
     "template_clash": "",
     "template_index": "",
+    "template_xray": "",
 }
 
 
@@ -398,6 +399,8 @@ def create_host(
     sub_params: str | None = None,
     protocol: str | None = None,
     flow: str | None = None,
+    up_mbps: int | None = None,
+    down_mbps: int | None = None,
 ) -> dict | None:
     if _address_port_exists(address, port):
         return None
@@ -417,6 +420,8 @@ def create_host(
             sub_params=sub_params,
             protocol=protocol,
             flow=flow,
+            up_mbps=up_mbps,
+            down_mbps=down_mbps,
         )
         session.add(host)
         session.commit()
@@ -439,6 +444,8 @@ def edit_host(
     sub_params: str | None = None,
     protocol: str | None = None,
     flow: str | None = None,
+    up_mbps: int | None = None,
+    down_mbps: int | None = None,
 ) -> bool:
     with SessionLocal() as session:
         host = session.get(Host, host_id)
@@ -468,6 +475,10 @@ def edit_host(
             host.protocol = protocol
         if flow is not None:
             host.flow = flow
+        if up_mbps is not None:
+            host.up_mbps = up_mbps
+        if down_mbps is not None:
+            host.down_mbps = down_mbps
         session.commit()
     return True
 
