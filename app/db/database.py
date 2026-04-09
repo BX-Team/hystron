@@ -1,12 +1,47 @@
 import secrets
 import time
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.engine import CursorResult
 
 from . import SessionLocal
 from .models import Config, Device, Host, HostTag, Traffic, User, UserTag
+
+
+def _billing_period_start() -> str:
+    """Return ISO timestamp of the current billing period start based on traffic_reset config.
+
+    Config format: "DD HH:MM" — day of month and UTC time.
+    If current date is before reset day/time, period started last month.
+    """
+    raw = get_config("traffic_reset", "01 00:00")
+    try:
+        parts = raw.strip().split()
+        reset_day = int(parts[0])
+        hm = parts[1].split(":")
+        reset_hour, reset_minute = int(hm[0]), int(hm[1])
+    except (IndexError, ValueError):
+        reset_day, reset_hour, reset_minute = 1, 0, 0
+
+    now = datetime.now(timezone.utc)
+    # Clamp reset_day to valid range
+    reset_day = max(1, min(28, reset_day))
+
+    try:
+        period_start = now.replace(day=reset_day, hour=reset_hour, minute=reset_minute, second=0, microsecond=0)
+    except ValueError:
+        period_start = now.replace(day=1, hour=reset_hour, minute=reset_minute, second=0, microsecond=0)
+
+    if now < period_start:
+        # Go to previous month
+        if now.month == 1:
+            period_start = period_start.replace(year=now.year - 1, month=12)
+        else:
+            period_start = period_start.replace(month=now.month - 1)
+
+    return period_start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 _CONFIG_DEFAULTS = {
     "profile_name_tpl": "Hystron for {uname}",
@@ -19,6 +54,9 @@ _CONFIG_DEFAULTS = {
     "whitelist_enable": "false",
     "whitelist": "",
     "forbidden_domains": "",
+    # Traffic reset: "DD HH:MM" — day of month and time (UTC) to reset traffic.
+    # e.g. "01 03:00" means reset on the 1st of each month at 03:00 UTC.
+    "traffic_reset": "01 00:00",
     # Template overrides: directory and per-format paths.
     # Per-format paths take precedence over templates_dir.
     # If empty, falls back to templates_dir/<filename>, then bundled template.
@@ -174,19 +212,20 @@ def check_auth(username: str, password: str) -> tuple[bool, str]:
     Validates user credentials and checks limits.
     Returns (ok, reason) — reason is "" if ok, otherwise "invalid"/"inactive"/"expired"/"overlimit".
     """
+    period_start = _billing_period_start()
     with SessionLocal() as session:
         row = (
             session.execute(
                 text("""
                 SELECT u.active, u.traffic_limit, u.expires_at,
-                       COALESCE(SUM(CASE WHEN t.ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')
+                       COALESCE(SUM(CASE WHEN t.ts >= :period_start
                                          THEN t.tx + t.rx ELSE 0 END), 0) AS total_traffic
                 FROM users u
                 LEFT JOIN traffic t ON t.username = u.username
                 WHERE u.username = :username AND u.password = :password
                 GROUP BY u.username
             """),
-                {"username": username, "password": password},
+                {"username": username, "password": password, "period_start": period_start},
             )
             .mappings()
             .one_or_none()
@@ -290,7 +329,7 @@ _TRAFFIC_SELECT = """
     SELECT
         username,
         SUM(CASE WHEN ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 minutes')             THEN tx + rx ELSE 0 END) AS hour,
-        SUM(CASE WHEN ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')            THEN tx + rx ELSE 0 END) AS day,
+        SUM(CASE WHEN ts >= :period_start                                                     THEN tx + rx ELSE 0 END) AS period,
         SUM(CASE WHEN ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-6 days', 'start of day') THEN tx + rx ELSE 0 END) AS week,
         SUM(CASE WHEN ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of month')          THEN tx + rx ELSE 0 END) AS month,
         SUM(tx + rx) AS total
@@ -300,7 +339,9 @@ _TRAFFIC_SELECT = """
 
 def get_traffic(username: str | None = None) -> list[dict]:
     where = "WHERE username = :username" if username else ""
-    params = {"username": username} if username else {}
+    params: dict = {"period_start": _billing_period_start()}
+    if username:
+        params["username"] = username
     with SessionLocal() as session:
         rows = (
             session.execute(
@@ -314,7 +355,7 @@ def get_traffic(username: str | None = None) -> list[dict]:
         {
             "username": r["username"],
             "hour": int(r["hour"] or 0),
-            "day": int(r["day"] or 0),
+            "period": int(r["period"] or 0),
             "week": int(r["week"] or 0),
             "month": int(r["month"] or 0),
             "total": int(r["total"] or 0),
@@ -333,7 +374,7 @@ def record_traffic_batch(entries: list[tuple[str, str, str, int, int]]) -> None:
 
 
 def reset_traffic_limited_users() -> int:
-    """Reactivate users that were deactivated due to daily traffic limits. Returns count of reactivated users."""
+    """Reactivate users that were deactivated due to traffic limits. Returns count of reactivated users."""
     with SessionLocal() as session:
         result: CursorResult = session.execute(  # type: ignore[assignment]
             update(User).where(User.active == 0, User.traffic_limit > 0).values(active=1)

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import httpx
 
 from .db.database import (
+    _billing_period_start,
     edit_user,
     get_config,
     get_traffic,
@@ -14,30 +15,30 @@ from .db.database import (
 )
 from .node.client import get_traffic_stats, reset_traffic_stats
 
-_last_reset_date = None
+_last_billing_period: str | None = None
 
 
-async def reset_daily_limits():
-    """Reset user active status at the start of each day (00:00 UTC)."""
-    global _last_reset_date
-    now = datetime.now(timezone.utc)
-    current_date = now.date()
+async def reset_billing_period():
+    """Reset user active status when a new billing period starts (based on traffic_reset config)."""
+    global _last_billing_period
+    period_start = _billing_period_start()
 
-    if _last_reset_date != current_date and now.hour == 0 and now.minute < 10:
+    if _last_billing_period is not None and _last_billing_period != period_start:
         try:
             from .db.database import list_users
             from .node.sync import sync_user_to_all_nodes
 
             count = reset_traffic_limited_users()
             if count > 0:
-                print(f"Daily reset: reactivated {count} users at {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-                # Re-add reactivated users to all nodes
+                now = datetime.now(timezone.utc)
+                print(f"Billing reset: reactivated {count} users at {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
                 for user in list_users():
                     if user["active"] and user["traffic_limit"] > 0:
                         await sync_user_to_all_nodes(user, active=True)
-            _last_reset_date = current_date
         except Exception as e:
-            print(f"Error during daily reset: {e}")
+            print(f"Error during billing reset: {e}")
+
+    _last_billing_period = period_start
 
 
 async def poll_hysteria2(host: dict, client: httpx.AsyncClient) -> None:
@@ -85,13 +86,13 @@ async def poll_hysteria2(host: dict, client: httpx.AsyncClient) -> None:
                     user = get_user(username)
                     if user and user["traffic_limit"] > 0:
                         total = get_traffic(username)
-                        if total and total[0]["day"] >= user["traffic_limit"]:
+                        if total and total[0]["period"] >= user["traffic_limit"]:
                             edit_user(username, active=False)
                             await client.post(f"{api_address}/kick", json={"id": username}, headers=headers)
                             from .node.sync import sync_user_to_all_nodes
 
                             await sync_user_to_all_nodes(user, active=False)
-                            print(f"kicked {username} on {address}: daily traffic limit exceeded")
+                            print(f"kicked {username} on {address}: traffic limit exceeded")
                 except Exception as e:
                     print(f"error checking limit for {username} on {address}: {e}")
     except Exception as e:
@@ -124,12 +125,12 @@ async def poll_hystron_node(host: dict) -> None:
             user = get_user(username)
             if user and user["traffic_limit"] > 0:
                 total = get_traffic(username)
-                if total and total[0]["day"] >= user["traffic_limit"]:
+                if total and total[0]["period"] >= user["traffic_limit"]:
                     edit_user(username, active=False)
                     from .node.sync import sync_user_to_all_nodes
 
                     await sync_user_to_all_nodes(user, active=False)
-                    print(f"deactivated {username} on {address}: daily traffic limit exceeded")
+                    print(f"deactivated {username} on {address}: traffic limit exceeded")
         except Exception as e:
             print(f"error checking limit for {username} on {address}: {e}")
 
@@ -137,7 +138,7 @@ async def poll_hystron_node(host: dict) -> None:
 async def poll_hysteria():
     async with httpx.AsyncClient(timeout=10) as client:
         while True:
-            await reset_daily_limits()
+            await reset_billing_period()
 
             for host in list_hosts(active_only=True):
                 if host.get("host_type", "hysteria2") == "hystron_node":

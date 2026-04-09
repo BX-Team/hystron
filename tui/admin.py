@@ -996,13 +996,13 @@ class TrafficContent(Static):
             self.table.add_columns("  (no traffic data yet)  ")
             return
 
-        columns = ["#", "Username", "Hour", "Day", "Week", "Month", "Total"]
+        columns = ["#", "Username", "Hour", "Period", "Week", "Month", "Total"]
         data = [
             [
                 str(idx),
                 r["username"],
                 fmt_bytes(r["hour"]),
-                fmt_bytes(r["day"]),
+                fmt_bytes(r["period"]),
                 fmt_bytes(r["week"]),
                 fmt_bytes(r["month"]),
                 fmt_bytes(r["total"]),

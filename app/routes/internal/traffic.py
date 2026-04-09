@@ -22,7 +22,7 @@ def traffic_user(username: str):
         else {
             "username": username,
             "hour": 0,
-            "day": 0,
+            "period": 0,
             "week": 0,
             "month": 0,
             "total": 0,

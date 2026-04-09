@@ -385,7 +385,7 @@ def traffic_list(
     """Show traffic. Pass a username to see per-user stats."""
     if ctx.invoked_subcommand is not None:
         return
-    periods = ["hour", "day", "week", "month", "total"]
+    periods = ["hour", "period", "week", "month", "total"]
     if username:
         r = _api("GET", f"/api/traffic/{username}")
         table = Table(show_header=False, box=None, padding=(0, 2))

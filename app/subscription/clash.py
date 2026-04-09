@@ -19,9 +19,9 @@ class ClashSubscription(BaseHystronSubscription):
             f"    password: {uname}:{pwd}\n"
         )
         if h.get("up_mbps"):
-            lines += f"    up: \"{h['up_mbps']} Mbps\"\n"
+            lines += f"    up: {h['up_mbps']}\n"
         if h.get("down_mbps"):
-            lines += f"    down: \"{h['down_mbps']} Mbps\"\n"
+            lines += f"    down: {h['down_mbps']}\n"
         lines += "    skip-cert-verify: true\n"
         self.proxy_lines.append(lines)
 
@@ -79,8 +79,10 @@ class ClashSubscription(BaseHystronSubscription):
         proxies_yaml = "".join(self.proxy_lines)
         proxy_names_yaml = "\n      - ".join(self.proxy_names)
         template = open(get_template_file("clash.yaml")).read()
+        result = template.replace("{proxies}", proxies_yaml.rstrip("\n"))
+        result = result.replace("{proxy_names}", proxy_names_yaml)
         return PlainTextResponse(
-            template.format(proxy_names_yaml, proxies=proxies_yaml.rstrip("\n")),
+            result,
             media_type="text/yaml",
             headers=base_headers,
         )

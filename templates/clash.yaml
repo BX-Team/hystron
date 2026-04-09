@@ -30,7 +30,7 @@ proxy-groups:
   - name: PROXY
     type: select
     proxies:
-      - {}
+      - {proxy_names}
 
 rules:
   - MATCH,PROXY
