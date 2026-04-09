@@ -1,8 +1,9 @@
 import base64
 import os
 import urllib.parse
+from datetime import datetime, timezone
 
-from app.db.database import get_config, list_hosts_for_user
+from app.db.database import _billing_period_start, get_config, list_hosts_for_user
 
 _BUNDLED_TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates")
 
@@ -59,7 +60,7 @@ def fmt_bytes(n: int) -> str:
 
 def make_base_headers(
     uname: str,
-    day: int,
+    period: int,
     base_url: str,
     subscription_path: str,
     sid: str,
@@ -71,7 +72,7 @@ def make_base_headers(
     title_b64 = base64.b64encode(profile_name.encode()).decode()
     headers = {
         "profile-update-interval": "12",
-        "subscription-userinfo": f"upload=0; download={day}; total={traffic_limit}; expire={expires_at}",
+        "subscription-userinfo": f"upload=0; download={period}; total={traffic_limit}; expire={expires_at}",
         "content-disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(profile_name)}",
         "profile-web-page-url": f"{base_url}{subscription_path}/{sid}",
         "profile-title": f"base64:{title_b64}",
@@ -128,7 +129,7 @@ def build_browser_ctx(
     sub_url: str,
     link_list: list[dict],
     hour: int,
-    day: int,
+    period: int,
     week: int,
     alltime: int,
     expires_at: int = 0,
@@ -136,13 +137,25 @@ def build_browser_ctx(
     traffic_tiles = (
         [
             {"label": "hour", "val": fmt_bytes(hour)},
-            {"label": "day", "val": fmt_bytes(day)},
+            {"label": "period", "val": fmt_bytes(period)},
             {"label": "week", "val": fmt_bytes(week)},
             {"label": "all-time", "val": fmt_bytes(alltime)},
         ]
         if alltime or hour
         else []
     )
+
+    # Compute billing period range for display
+    period_start_iso = _billing_period_start()
+    period_start_dt = datetime.strptime(period_start_iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    # Next period: same day next month
+    if period_start_dt.month == 12:
+        period_end_dt = period_start_dt.replace(year=period_start_dt.year + 1, month=1)
+    else:
+        period_end_dt = period_start_dt.replace(month=period_start_dt.month + 1)
+
+    period_start_str = f"{period_start_dt.day} {period_start_dt.strftime('%b').lower()}"
+    period_end_str = f"{period_end_dt.day} {period_end_dt.strftime('%b').lower()}"
 
     return {
         "username": uname,
@@ -152,4 +165,5 @@ def build_browser_ctx(
         "active": active,
         "expires_at": expires_at,
         "support_url": get_config("support_url", ""),
+        "period_range": f"{period_start_str} — {period_end_str}",
     }

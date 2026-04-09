@@ -110,7 +110,7 @@ async def subscription(sid: str, request: Request):
     stats = get_traffic(uname)
     t = stats[0] if stats else {}
     hour = t.get("hour", 0)
-    day = t.get("day", 0)
+    period = t.get("period", 0)
     week = t.get("week", 0)
     alltime = t.get("total", 0)
 
@@ -133,7 +133,7 @@ async def subscription(sid: str, request: Request):
 
         _, base_headers = make_base_headers(
             uname,
-            day,
+            period,
             base_url,
             SUBSCRIPTION_PATH,
             sid,
@@ -151,5 +151,5 @@ async def subscription(sid: str, request: Request):
 
     print(f"\nbrowser: {uname} | {request.client.host}\n")
 
-    ctx = build_browser_ctx(uname, user["active"], sub_url, link_list, hour, day, week, alltime, user["expires_at"])
+    ctx = build_browser_ctx(uname, user["active"], sub_url, link_list, hour, period, week, alltime, user["expires_at"])
     return _make_templates().TemplateResponse("index.html", {"request": request, **ctx})
