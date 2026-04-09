@@ -53,7 +53,6 @@ _CONFIG_DEFAULTS = {
     "subscription_path": "/sub",
     "whitelist_enable": "false",
     "whitelist": "",
-    "forbidden_domains": "",
     # Traffic reset: "DD HH:MM" — day of month and time (UTC) to reset traffic.
     # e.g. "01 03:00" means reset on the 1st of each month at 03:00 UTC.
     "traffic_reset": "01 00:00",

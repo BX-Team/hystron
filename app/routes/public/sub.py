@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from app.db.database import get_config, get_traffic, get_user_by_sid, list_hosts, register_device
+from app.routes.public.auth import is_ip_whitelisted
 from app.subscription import (
     build_browser_ctx,
     build_clash,
@@ -94,6 +95,9 @@ def _get_base_url(request: Request) -> str:
 @router.head(f"{SUBSCRIPTION_PATH}/{{sid}}")
 @router.get(f"{SUBSCRIPTION_PATH}/{{sid}}")
 async def subscription(sid: str, request: Request):
+    if not is_ip_whitelisted(request.client.host):
+        return Response(status_code=403)
+
     user = get_user_by_sid(sid)
 
     if not user:

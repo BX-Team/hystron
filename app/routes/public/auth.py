@@ -6,13 +6,18 @@ from app.db.database import check_auth, get_config
 router = APIRouter(tags=["Auth"])
 
 
+def is_ip_whitelisted(ip: str) -> bool:
+    """Return True if whitelist is disabled or the IP is in the whitelist."""
+    if get_config("whitelist_enable", "false").lower() not in ("true", "1"):
+        return True
+    whitelist = set(get_config("whitelist", "").split())
+    return ip in whitelist
+
+
 @router.post("/auth")
 async def auth(request: Request):
-    whitelist_enabled = get_config("whitelist_enable", "false").lower() in ("true", "1")
-    if whitelist_enabled:
-        whitelist = set(get_config("whitelist", "").split())
-        if request.client.host not in whitelist:
-            return Response(status_code=403)
+    if not is_ip_whitelisted(request.client.host):
+        return Response(status_code=403)
 
     try:
         data = await request.json()

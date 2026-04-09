@@ -48,26 +48,6 @@ async def poll_hysteria2(host: dict, client: httpx.AsyncClient) -> None:
     api_secret = host["api_secret"] or ""
     headers = {"Authorization": api_secret}
 
-    forbidden_raw = get_config("forbidden_domains", "")
-    forbidden = [d.strip() for d in forbidden_raw.split(",") if d.strip()]
-
-    if forbidden:
-        try:
-            r = await client.get(f"{api_address}/dump/streams", headers=headers)
-            if r.status_code == 200:
-                offenders: dict[str, list[str]] = {}
-                for stream in r.json().get("streams", []):
-                    addr = stream.get("hooked_req_addr") or stream.get("req_addr", "")
-                    domain = addr.split(":")[0]
-                    auth = stream.get("auth", "")
-                    for fd in forbidden:
-                        if domain == fd or domain.endswith("." + fd):
-                            offenders.setdefault(auth, []).append(domain)
-                for user, domains in offenders.items():
-                    print(f"forbidden: {address} / {user}: {', '.join(sorted(set(domains)))}")
-        except Exception as e:
-            print(f"error streams {address}: {e}")
-
     try:
         r = await client.get(f"{api_address}/traffic", headers=headers)
         if r.status_code == 200:
