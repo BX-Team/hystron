@@ -342,7 +342,7 @@
 
     <!-- footer -->
     <div class="footer" id="footer">
-      <span id="resetText">traffic resets at 00:00 UTC</span>
+      <span id="resetText" data-range="{{ period_range }}">period: {{ period_range }}</span>
       {% if support_url %} &bull; <a href="{{ support_url }}" target="_blank" rel="noreferrer" id="supportLink">support</a>{% endif %}
     </div>
 
@@ -364,7 +364,7 @@
         usage: 'usage',
         active: 'active',
         inactive: 'inactive',
-        reset: 'traffic resets at 00:00 UTC',
+        period: 'period',
         support: 'support',
         copied: 'copied',
         expires: 'expires',
@@ -382,7 +382,7 @@
         usage: 'трафик',
         active: 'активна',
         inactive: 'отключена',
-        reset: 'трафик сбрасывается в 00:00 UTC',
+        period: 'период',
         support: 'поддержка',
         copied: 'скопировано',
         expires: 'истекает',
@@ -405,7 +405,9 @@
       document.getElementById('toast').textContent = t.copied;
       document.getElementById('statusText').textContent = IS_ACTIVE ? t.active : t.inactive;
       var resetEl = document.getElementById('resetText');
-      if (resetEl) resetEl.textContent = t.reset;
+      if (resetEl) {
+        resetEl.textContent = t.period + ': ' + resetEl.getAttribute('data-range');
+      }
       var supportEl = document.getElementById('supportLink');
       if (supportEl) supportEl.textContent = t.support;
       var expiresEl = document.getElementById('expiresHint');

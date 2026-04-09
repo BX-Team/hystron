@@ -25,7 +25,6 @@ All configuration is stored as key-value pairs in the database. You can manage i
 | Key | Default | Description |
 |-----|---------|-------------|
 | `traffic_reset` | `01 00:00` | When to reset the billing period for traffic limits. Format: `DD HH:MM` (UTC). See details below. |
-| `forbidden_domains` | `""` | Comma-separated list of domains to monitor. Users accessing these domains are logged during polling. |
 
 ### Traffic reset (`traffic_reset`)
 
@@ -51,8 +50,8 @@ When the billing period resets, all users that were deactivated due to exceeding
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `whitelist_enable` | `false` | Set to `true` to enable IP whitelist for the internal API. |
-| `whitelist` | `""` | Comma-separated list of allowed IP addresses when whitelist is enabled. |
+| `whitelist_enable` | `false` | Set to `true` to enable IP whitelist for auth and subscription endpoints. |
+| `whitelist` | `""` | Space-separated list of allowed IP addresses when whitelist is enabled. |
 
 ## Templates
 
