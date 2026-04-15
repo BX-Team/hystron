@@ -25,6 +25,7 @@ from textual.widgets import (
     Switch,
     TabbedContent,
     TabPane,
+    TextArea,
 )
 
 from app.db.database import (
@@ -762,25 +763,25 @@ class ConfigEditModal(BaseModal):
 
     def compose(self) -> ComposeResult:
         with Container(classes="modal-box"):
-            yield Static(f"Edit config '{self._key}'", classes="modal-title")
+            yield Static(f"Edit config '{self._key}'  [dim](Ctrl+S to save)[/dim]", classes="modal-title")
             with Vertical(classes="input-container"):
-                yield Input(placeholder="Value", id="value")
+                yield TextArea(id="value")
             with Horizontal(classes="button-row"):
                 yield Button("Save", id="save", variant="success")
                 yield Button("Cancel", id="cancel", variant="error")
 
     async def on_mount(self) -> None:
-        inp = self.query_one("#value")
-        inp.value = self._value
-        self.set_focus(inp)
+        ta = self.query_one("#value", TextArea)
+        ta.load_text(self._value)
+        self.set_focus(ta)
 
-    async def key_enter(self) -> None:
-        if not self.query_one("#cancel").has_focus:
+    async def on_key(self, event) -> None:
+        if event.key == "ctrl+s":
             await self.on_button_pressed(Button.Pressed(self.query_one("#save")))
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
-            value = self.query_one("#value").value
+            value = self.query_one("#value", TextArea).text
             set_config(self._key, value)
             self.notify(f"Config '{self._key}' updated", severity="success", title="Success")
             self.on_close()
@@ -796,10 +797,10 @@ class ConfigNewModal(BaseModal):
 
     def compose(self) -> ComposeResult:
         with Container(classes="modal-box"):
-            yield Static("New config entry", classes="modal-title")
+            yield Static("New config entry  [dim](Ctrl+S to save)[/dim]", classes="modal-title")
             with Vertical(classes="input-container"):
                 yield Input(placeholder="Key", id="key")
-                yield Input(placeholder="Value", id="value")
+                yield TextArea(id="value")
             with Horizontal(classes="button-row"):
                 yield Button("Create", id="create", variant="success")
                 yield Button("Cancel", id="cancel", variant="error")
@@ -807,14 +808,14 @@ class ConfigNewModal(BaseModal):
     async def on_mount(self) -> None:
         self.set_focus(self.query_one("#key"))
 
-    async def key_enter(self) -> None:
-        if not self.query_one("#cancel").has_focus:
+    async def on_key(self, event) -> None:
+        if event.key == "ctrl+s":
             await self.on_button_pressed(Button.Pressed(self.query_one("#create")))
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "create":
-            key = self.query_one("#key").value.strip()
-            value = self.query_one("#value").value
+            key = self.query_one("#key", Input).value.strip()
+            value = self.query_one("#value", TextArea).text
             if not key:
                 self.notify("Key is required", severity="error", title="Error")
                 return

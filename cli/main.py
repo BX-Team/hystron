@@ -651,10 +651,24 @@ def config_get(key: str = typer.Argument(..., help="Config key")):
 @config_app.command("set")
 def config_set(
     key: str = typer.Argument(..., help="Config key"),
-    value: list[str] = typer.Argument(..., help="New value (words joined by spaces)"),
+    value: Optional[list[str]] = typer.Argument(None, help="New value (words joined by spaces)"),
+    multiline: bool = typer.Option(False, "--multiline", "-m", help="Enter value as multiple lines (end with Ctrl+D / Ctrl+Z)"),
 ):
     """Set a config value."""
-    v = " ".join(value)
+    if multiline:
+        console.print("[dim]Enter value (multiple lines). End with Ctrl+D (Linux/Mac) or Ctrl+Z+Enter (Windows):[/dim]")
+        lines: list[str] = []
+        try:
+            while True:
+                lines.append(input())
+        except EOFError:
+            pass
+        v = "\n".join(lines)
+    else:
+        if not value:
+            console.print("[red]Provide a value or use --multiline / -m for multiline input.[/red]")
+            raise typer.Exit(1)
+        v = " ".join(value)
     _api("PUT", f"/api/config/{key}", json={"value": v})
     console.print(f"[green]{key}[/green] = {v}")
 
