@@ -270,36 +270,20 @@
           </div>
         </div>
 
-        <div class="app-card" id="app-hiddify">
-          <div class="app-icon">🛡️</div>
-          <div class="app-info">
-            <span class="app-name">Hiddify</span>
-            <div class="app-platforms">
-              <span class="badge" data-platform="android">Android</span>
-              <span class="badge" data-platform="windows">Windows</span>
-            </div>
-          </div>
-          <div class="app-actions">
-            <a class="btn btn-green" href="hiddify://import/{{ sub_url | urlencode }}" data-i18n="configure">configure</a>
-            <a class="btn btn-dim"
-               data-dl-android="https://play.google.com/store/apps/details?id=app.hiddify.com&amp;pcampaignid=web_share"
-               data-dl-windows="https://github.com/hiddify/hiddify-app/releases/download/v4.1.1/Hiddify-Windows-Setup-x64.exe"
-               href="https://github.com/hiddify/hiddify-app/releases/download/v4.1.1/Hiddify-Windows-Setup-x64.exe"
-               target="_blank" rel="noreferrer" data-i18n="download">download</a>
-          </div>
-        </div>
-
-        <div class="app-card wip" id="app-nyx">
+        <div class="app-card" id="app-nyx">
           <div class="app-icon">🖥️</div>
           <div class="app-info">
             <span class="app-name">Nyx</span>
             <div class="app-platforms">
               <span class="badge" data-platform="windows">Windows</span>
-              <span class="badge wip" data-i18n="wip">in development</span>
+              <span class="badge" data-platform="linux">Linux</span>
             </div>
           </div>
           <div class="app-actions">
-            <span class="btn btn-disabled" data-i18n="soon">coming soon</span>
+            <a class="btn btn-green" href="nyx://install-config?url={{ sub_url | urlencode }}&name=SafeNet" data-i18n="configure">configure</a>
+            <a class="btn btn-dim" id="nyx-dl"
+               href="https://github.com/BX-Team/Nyx/releases/download/v1.0.0/Nyx_1.0.0_x64-setup.exe"
+               target="_blank" rel="noreferrer" data-i18n="download">download</a>
           </div>
         </div>
 
@@ -505,6 +489,22 @@
             var s = statuses[dot.getAttribute('data-host')];
             if (s) { dot.className = 'dot ' + s; }
           });
+        })
+        .catch(function () {});
+    })();
+
+    // Fetch latest Nyx release from GitHub API
+    (function () {
+      var dlEl = document.getElementById('nyx-dl');
+      if (!dlEl) return;
+      fetch('https://api.github.com/repos/BX-Team/Nyx/releases/latest')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var ua = navigator.userAgent.toLowerCase();
+          var isLinux = /linux/.test(ua) && !/android/.test(ua);
+          var pattern = isLinux ? /linux/i : /x64-setup\.exe$/i;
+          var asset = data.assets && data.assets.find(function (a) { return pattern.test(a.name); });
+          if (asset) dlEl.href = asset.browser_download_url;
         })
         .catch(function () {});
     })();
