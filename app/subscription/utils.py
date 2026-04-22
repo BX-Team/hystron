@@ -66,6 +66,7 @@ def make_base_headers(
     sid: str,
     traffic_limit: int = 0,
     expires_at: int = 0,
+    sub_url: str | None = None,
 ) -> tuple[str, dict]:
     profile_name_tpl = get_config("profile_name_tpl", "hysteria for {uname}")
     profile_name = profile_name_tpl.format(uname=uname)
@@ -85,6 +86,11 @@ def make_base_headers(
     announce_url = get_config("announce-url", "")
     if announce_url:
         headers["announce-url"] = announce_url
+    providerid = get_config("providerid", "")
+    if providerid:
+        headers["providerid"] = providerid
+    if sub_url:
+        headers["new-url"] = sub_url
     return title_b64, headers
 
 

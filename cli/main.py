@@ -288,6 +288,7 @@ def users_info(username: str = typer.Argument(..., help="Username")):
         str(row["device_limit"]) if row["device_limit"] else "unlimited",
     )
     table.add_row("expires_at", str(row["expires_at"]))
+    table.add_row("sub_url", row.get("sub_url") or "")
     table.add_row("tags", _fmt_tags(row.get("tags", [])))
     console.print(table)
 
@@ -303,6 +304,7 @@ def users_edit(
     device_limit: Optional[int] = typer.Option(
         None, "--device-limit", "-d", help="Max number of devices (0 = unlimited)"
     ),
+    sub_url: Optional[str] = typer.Option(None, "--sub-url", help="New subscription URL for migration ('' to clear)"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags, replaces all (e.g. TEST,VIP)"),
 ):
     """Edit an existing user."""
@@ -319,6 +321,8 @@ def users_edit(
         body["expires_at"] = expires_at
     if device_limit is not None:
         body["device_limit"] = device_limit
+    if sub_url is not None:
+        body["sub_url"] = sub_url
     parsed_tags = _parse_tags(tags)
     if parsed_tags is not None:
         body["tags"] = parsed_tags

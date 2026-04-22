@@ -16,6 +16,7 @@ class User(Base):
     traffic_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expires_at: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     device_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sub_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Device(Base):

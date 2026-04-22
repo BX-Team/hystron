@@ -112,7 +112,7 @@ def list_users_with_traffic() -> list[dict]:
             session.execute(
                 text("""
                 SELECT u.username, u.password, u.sid, u.active,
-                       u.traffic_limit, u.expires_at, u.device_limit,
+                       u.traffic_limit, u.expires_at, u.device_limit, u.sub_url,
                        COALESCE(SUM(t.tx + t.rx), 0) AS total,
                        (SELECT COUNT(*) FROM devices d WHERE d.username = u.username) AS device_count
                 FROM users u
@@ -169,6 +169,8 @@ def edit_user(
     traffic_limit: int | None = None,
     expires_at: int | None = None,
     device_limit: int | None = None,
+    sub_url: str | None = None,
+    _set_sub_url: bool = False,
 ) -> bool:
     with SessionLocal() as session:
         user = session.get(User, username)
@@ -186,6 +188,8 @@ def edit_user(
             user.expires_at = expires_at
         if device_limit is not None:
             user.device_limit = device_limit
+        if _set_sub_url:
+            user.sub_url = sub_url or None
         session.commit()
     return True
 

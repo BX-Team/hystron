@@ -143,6 +143,7 @@ async def subscription(sid: str, request: Request):
             sid,
             user["traffic_limit"],
             user["expires_at"],
+            sub_url=user.get("sub_url") or None,
         )
 
         if _RE_SINGBOX.search(ua):

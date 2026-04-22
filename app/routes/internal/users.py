@@ -35,6 +35,7 @@ class EditBody(BaseModel):
     traffic_limit: Optional[int] = None
     expires_at: Optional[int] = None
     device_limit: Optional[int] = None
+    sub_url: Optional[str] = None
     tags: Optional[list[str]] = None
 
 
@@ -48,6 +49,7 @@ def _row_to_dict(row) -> dict:
         "traffic_limit": row["traffic_limit"],
         "expires_at": row["expires_at"],
         "device_limit": row["device_limit"],
+        "sub_url": row.get("sub_url"),
         "tags": get_user_tags(username),
     }
 
@@ -109,6 +111,8 @@ async def users_edit(username: str, body: EditBody):
         traffic_limit=body.traffic_limit,
         expires_at=body.expires_at,
         device_limit=body.device_limit,
+        sub_url=body.sub_url,
+        _set_sub_url="sub_url" in body.model_fields_set,
     )
     if body.tags is not None:
         set_user_tags(username, body.tags)

@@ -329,6 +329,7 @@ class UserEditModal(BaseModal):
                 yield Input(placeholder="Device limit        (empty = keep)", id="device_limit")
                 yield Input(placeholder="Expires at unix ts  (empty = keep)", id="expires_at")
                 yield Input(placeholder="Tags (comma-separated, empty = keep)", id="tags")
+                yield Input(placeholder="New-URL             (pre-filled if set, clear to remove)", id="sub_url")
                 with Horizontal(classes="switch-row"):
                     yield Label("Active: ")
                     yield Switch(animate=False, id="active", value=True)
@@ -340,6 +341,8 @@ class UserEditModal(BaseModal):
         row = get_user(self.username)
         if row:
             self.query_one("#active").value = bool(row["active"])
+            if row.get("sub_url"):
+                self.query_one("#sub_url").value = row["sub_url"]
         existing_tags = get_user_tags(self.username)
         if existing_tags:
             self.query_one("#tags").value = ", ".join(existing_tags)
@@ -358,6 +361,7 @@ class UserEditModal(BaseModal):
             dl_raw = self.query_one("#device_limit").value.strip()
             ea_raw = self.query_one("#expires_at").value.strip()
             tags_raw = self.query_one("#tags").value.strip()
+            sub_url_raw = self.query_one("#sub_url").value
             try:
                 traffic_limit = int(float(tl_raw) * 1024**3) if tl_raw else None
                 device_limit = int(dl_raw) if dl_raw else None
@@ -369,6 +373,8 @@ class UserEditModal(BaseModal):
                     title="Error",
                 )
                 return
+            # strip whitespace; a single space means "clear"
+            sub_url_val = sub_url_raw.strip() or None
             edit_user(
                 self.username,
                 password=password,
@@ -377,6 +383,8 @@ class UserEditModal(BaseModal):
                 traffic_limit=traffic_limit,
                 expires_at=expires_at,
                 device_limit=device_limit,
+                sub_url=sub_url_val,
+                _set_sub_url=True,
             )
             if tags_raw is not None:
                 tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
